@@ -278,7 +278,7 @@ self_awareness_enhancement/
 
 - 项目主页: https://github.com/yourusername/self-awareness-enhancement
 - 问题反馈: https://github.com/yourusername/self-awareness-enhancement/issues
-- 邮箱: your.email@example.com
+- 邮箱: 869372447@qq.com
 
 ---
 

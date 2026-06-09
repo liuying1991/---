@@ -23,42 +23,67 @@
 ## 快速开始
 
 ```bash
+# 安装依赖
+go mod tidy
+
 # 构建项目
-go build -o jarvis ./cmd/jarvis
+go build -o bin/jarvis ./cmd/jarvis
 
 # 启动CLI模式
-./jarvis chat
+./bin/jarvis chat
 
 # 启动Web服务
-./jarvis serve --port 8080
+./bin/jarvis serve
 
 # 启动语音模式
-./jarvis voice
+./bin/jarvis voice
 ```
 
 ## 配置
 
-配置文件位于 `config/config.yaml`，支持：
+配置文件位于 `configs/config.yaml`，支持：
 
-- LLM模型配置
-- 语音服务配置
-- 系统控制权限
+- LLM模型配置（vLLM/llama.cpp）
+- 语音服务配置（Whisper/Piper）
+- 系统控制权限（命令黑白名单）
+- Web服务配置
 - 日志级别设置
 
 ## 架构
 
 ```
 jarvis/
-├── cmd/jarvis/       # 命令行入口
+├── cmd/jarvis/          # 命令行入口
 ├── internal/
-│   ├── core/         # 核心模块（配置、日志）
-│   ├── llm/          # LLM引擎接口
-│   ├── dialog/       # 对话管理
-│   ├── skills/       # 技能模块
-│   ├── voice/        # 语音处理
-│   └── web/          # Web服务
-├── pkg/              # 公共工具库
-└── configs/          # 配置文件
+│   ├── core/            # 核心模块（配置、日志）
+│   ├── llm/             # LLM引擎接口
+│   ├── dialog/          # 对话管理
+│   ├── skills/          # 技能模块
+│   │   ├── registry.go  # 技能注册
+│   │   ├── extended.go  # 扩展技能
+│   │   └── system.go    # 系统技能
+│   └── web/             # Web服务
+├── configs/             # 配置文件
+└── docs/                # 文档
+```
+
+## 使用示例
+
+### CLI模式
+```
+你: 帮我查看当前目录的文件
+贾维斯: [调用 list_files 技能]
+...
+```
+
+### Web模式
+访问 http://localhost:8080 使用Web界面
+
+### API调用
+```bash
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "查看系统信息"}'
 ```
 
 ## License

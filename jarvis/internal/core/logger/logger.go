@@ -2,93 +2,95 @@ package logger
 
 import (
 	"os"
+	"sync"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var globalLogger *zap.Logger
 var globalSugar *zap.SugaredLogger
+var once sync.Once
 
 // Config 日志配置
 type Config struct {
-	Level      string
-	File       string
-	Console    bool
-	MaxSize    int
-	MaxBackups int
-	MaxAge     int
+	Level   string
+	File    string
+	Console bool
 }
 
 // Init 初始化日志
 func Init(cfg Config) error {
-	// 解析日志级别
-	level, err := zapcore.ParseLevel(cfg.Level)
-	if err != nil {
-		level = zapcore.InfoLevel
-	}
-
-	// 编码器配置
-	encoderConfig := zapcore.EncoderConfig{
-		TimeKey:        "time",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		CallerKey:      "caller",
-		FunctionKey:    zapcore.OmitKey,
-		MessageKey:     "msg",
-		StacktraceKey:  "stacktrace",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
-		EncodeDuration: zapcore.SecondsDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder,
-	}
-
-	// 构建cores
-	var cores []zapcore.Core
-
-	// 控制台输出
-	if cfg.Console {
-		consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
-		consoleCore := zapcore.NewCore(
-			consoleEncoder,
-			zapcore.AddSync(os.Stdout),
-			level,
-		)
-		cores = append(cores, consoleCore)
-	}
-
-	// 文件输出
-	if cfg.File != "" {
-		fileEncoder := zapcore.NewJSONEncoder(encoderConfig)
-		fileWriter := &lumberjack.Logger{
-			Filename:   cfg.File,
-			MaxSize:    cfg.MaxSize,
-			MaxBackups: cfg.MaxBackups,
-			MaxAge:     cfg.MaxAge,
-			Compress:   true,
+	var err error
+	once.Do(func() {
+		// 解析日志级别
+		var level zapcore.Level
+		if err = level.UnmarshalText([]byte(cfg.Level)); err != nil {
+			level = zapcore.InfoLevel
+			err = nil
 		}
-		fileCore := zapcore.NewCore(
-			fileEncoder,
-			zapcore.AddSync(fileWriter),
-			level,
-		)
-		cores = append(cores, fileCore)
-	}
 
-	// 创建logger
-	core := zapcore.NewTee(cores...)
-	globalLogger = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
-	globalSugar = globalLogger.Sugar()
+		// 编码器配置
+		encoderConfig := zapcore.EncoderConfig{
+			TimeKey:        "time",
+			LevelKey:       "level",
+			NameKey:        "logger",
+			CallerKey:      "caller",
+			FunctionKey:    zapcore.OmitKey,
+			MessageKey:     "msg",
+			StacktraceKey:  "stacktrace",
+			LineEnding:     zapcore.DefaultLineEnding,
+			EncodeLevel:    zapcore.CapitalLevelEncoder,
+			EncodeTime:     zapcore.ISO8601TimeEncoder,
+			EncodeDuration: zapcore.SecondsDurationEncoder,
+			EncodeCaller:   zapcore.ShortCallerEncoder,
+		}
 
-	return nil
+		// 构建cores
+		var cores []zapcore.Core
+
+		// 控制台输出
+		if cfg.Console {
+			consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
+			consoleCore := zapcore.NewCore(
+				consoleEncoder,
+				zapcore.AddSync(os.Stdout),
+				level,
+			)
+			cores = append(cores, consoleCore)
+		}
+
+		// 文件输出
+		if cfg.File != "" {
+			fileEncoder := zapcore.NewJSONEncoder(encoderConfig)
+			var file *os.File
+			file, err = os.OpenFile(cfg.File, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				return
+			}
+			fileCore := zapcore.NewCore(
+				fileEncoder,
+				zapcore.AddSync(file),
+				level,
+			)
+			cores = append(cores, fileCore)
+		}
+
+		// 创建logger
+		if len(cores) == 0 {
+			globalLogger = zap.NewNop()
+		} else {
+			core := zapcore.NewTee(cores...)
+			globalLogger = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
+		}
+		globalSugar = globalLogger.Sugar()
+	})
+	return err
 }
 
 // L 获取原始logger
 func L() *zap.Logger {
 	if globalLogger == nil {
-		// 返回默认logger
 		return zap.NewNop()
 	}
 	return globalLogger

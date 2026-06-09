@@ -13,6 +13,7 @@ import (
 	"jarvis/internal/dialog"
 	"jarvis/internal/llm"
 	"jarvis/internal/skills"
+	"jarvis/internal/web"
 
 	"github.com/spf13/cobra"
 )
@@ -70,12 +71,9 @@ func runChat(cmd *cobra.Command, args []string) {
 
 	// 初始化日志
 	if err := logger.Init(logger.Config{
-		Level:      cfg.Log.Level,
-		File:       cfg.Log.File,
-		Console:    cfg.Log.Console,
-		MaxSize:    cfg.Log.MaxSize,
-		MaxBackups: cfg.Log.MaxBackups,
-		MaxAge:     cfg.Log.MaxAge,
+		Level:   cfg.Log.Level,
+		File:    cfg.Log.File,
+		Console: cfg.Log.Console,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "初始化日志失败: %v\n", err)
 		os.Exit(1)
@@ -172,8 +170,67 @@ func runChat(cmd *cobra.Command, args []string) {
 }
 
 func runServe(cmd *cobra.Command, args []string) {
-	// TODO: 实现Web服务
-	fmt.Println("Web服务功能开发中...")
+	// 加载配置
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 初始化日志
+	if err := logger.Init(logger.Config{
+		Level:   cfg.Log.Level,
+		File:    cfg.Log.File,
+		Console: cfg.Log.Console,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "初始化日志失败: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Sync()
+
+	logger.Info("贾维斯启动 - Web服务模式")
+
+	// 创建LLM引擎
+	engine, err := llm.NewEngine(cfg.LLM.Backend, cfg.LLM.APIBase, cfg.LLM.ModelPath)
+	if err != nil {
+		logger.Fatalf("创建LLM引擎失败: %v", err)
+	}
+	defer engine.Close()
+
+	// 创建技能注册表
+	registry := skills.NewSkillRegistry(skills.SkillConfig{
+		Enabled:          cfg.System.Enabled,
+		CommandWhitelist: cfg.System.CommandWhitelist,
+		CommandBlacklist: cfg.System.CommandBlacklist,
+		ConfirmDangerous: cfg.System.ConfirmDangerous,
+		WorkDir:          cfg.System.WorkDir,
+	})
+
+	// 创建对话管理器
+	dialogManager := dialog.NewManager(
+		engine,
+		registry,
+		cfg.Dialog.SystemPrompt,
+		cfg.Dialog.HistoryLength,
+		cfg.Dialog.Stream,
+	)
+
+	// 创建Web服务器
+	server := web.NewServer(cfg.Web.Host, cfg.Web.Port, dialogManager)
+
+	// 设置信号处理
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		logger.Info("正在关闭服务器...")
+		server.Stop(context.Background())
+	}()
+
+	// 启动服务器
+	if err := server.Start(); err != nil {
+		logger.Fatalf("服务器错误: %v", err)
+	}
 }
 
 func runVoice(cmd *cobra.Command, args []string) {

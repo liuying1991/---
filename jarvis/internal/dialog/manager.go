@@ -197,3 +197,8 @@ func (m *Manager) ClearHistory() {
 func (m *Manager) GetHistory() []llm.Message {
 	return m.history
 }
+
+// HandleMessage 实现MessageHandler接口
+func (m *Manager) HandleMessage(ctx context.Context, message string) (string, error) {
+	return m.Chat(ctx, message)
+}

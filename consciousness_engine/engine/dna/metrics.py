@@ -378,21 +378,21 @@ class ConsciousnessMetrics:
             return None
 
         N = recent[0].shape[0]
-        if N < 3 or N > 200:  # 限制矩阵大小
+        if N < 3 or N > 100:  # 限制矩阵大小（提高性能）
             # 采样子集
-            indices = np.random.choice(N, min(100, N), replace=False)
+            sample_size = min(100, N)
+            indices = np.random.choice(N, sample_size, replace=False)
             N = len(indices)
         else:
             indices = np.arange(N)
 
         matrix = np.zeros((N, N), dtype=np.float32)
 
-        # 计算每对的互信息（传递熵的简化近似）
+        # 计算每对的互相关（传递熵的简化近似）
         for i in range(N):
             for j in range(N):
                 if i == j:
                     continue
-                # 简化：用互相关替代传递熵
                 x = np.array([recent[t][indices[i]] for t in range(T)])
                 y = np.array([recent[t][indices[j]] for t in range(T)])
                 matrix[i][j] = abs(np.corrcoef(x, y)[0, 1]) if np.std(x) > 0 and np.std(y) > 0 else 0

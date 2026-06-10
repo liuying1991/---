@@ -40,7 +40,7 @@ class ConsciousnessEngineV2:
         self.config = self._load_config(config_path)
 
         # 加速模拟参数
-        self.sim_speed = self.config.get("simulation", {}).get("speed", 10)  # 每tick模拟10个周期
+        self.sim_speed = self.config.get("simulation", {}).get("speed", 5)  # 每tick模拟5个周期
         self.acceleration_mode = True  # 加速模式（无GUI）
 
         # 虚拟世界
@@ -213,8 +213,8 @@ class ConsciousnessEngineV2:
 
     def _compute_energy_gain(self) -> float:
         """计算本周期获得的能量"""
-        # 加速模式下增加能量供给
-        return max(0, len(self.world_resources) * 5 + 50)
+        # 加速模式下大幅增加能量供给（200+节点×10周期需要大量能量）
+        return max(0, len(self.world_resources) * 10 + 2000)
 
     def _execute_actions(self, actions: List[Dict]):
         """执行动作"""
@@ -226,7 +226,9 @@ class ConsciousnessEngineV2:
 
             if action_name == "CONSUME":
                 # 消耗最近资源
-                self._consume_resource()
+                energy_gained = self._consume_resource()
+                if energy_gained and energy_gained > 0:
+                    self.host_energy = min(1000, self.host_energy + energy_gained)
             elif action_name == "MOVE_FORWARD":
                 self.host_position = Vector3(
                     self.host_position.x,
@@ -438,8 +440,8 @@ def main():
     for cell in stem_cells:
         engine.brain.notions[cell.id] = cell
 
-    # 运行500步（500×10=5000个模拟周期，足够积累指标数据）
-    engine.run(steps=500, report_interval=50, verbose=True)
+    # 运行600步（600×5=3000个模拟周期，观察修剪→稳态→lifelong全过程）
+    engine.run(steps=600, report_interval=50, verbose=True)
 
     engine.close()
 

@@ -26,6 +26,7 @@ class DNASeed:
         return {
             # === 1. 初始配置（~1KB）===
             "initial_stem_cells": 10,
+            "max_total_nodes": 300,  # v0.2: 限制总节点数防止指数爆炸
             "initial_vector_dim": 64,
             "max_vector_dim": 256,
             "initial_connection_radius": 10.0,

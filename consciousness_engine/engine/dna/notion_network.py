@@ -99,8 +99,8 @@ class NotionNetwork:
         if self.development_stage in ("embryo", "migration", "synapse_burst", "differentiation", "lifelong"):
             self._split_and_differentiate()
 
-        # 10. 连接建立
-        if self.development_stage in ("synapse_burst", "pruning", "differentiation", "steady"):
+        # 10. 连接建立（非修剪期才允许新建连接）
+        if self.development_stage in ("synapse_burst", "differentiation", "steady", "lifelong"):
             self._create_connections()
 
         # 11. 凋亡
@@ -252,6 +252,12 @@ class NotionNetwork:
         """更新振荡器（v0.2新增）"""
         for notion in self.notions.values():
             notion.update_oscillator(self.cycle)
+            # oscillator自主激活时传播信号到邻居
+            if notion.type == NotionType.OSCILLATOR and notion.is_active and notion.connections:
+                # 随机选择一个连接目标传播振荡信号
+                for target_id, strength in list(notion.connections.items())[:3]:
+                    if target_id in self.notions and self.notions[target_id].is_alive:
+                        self.notions[target_id].activate(notion.activation * abs(strength) * 0.5)
 
     # ==================== 赫布学习 ====================
 
@@ -293,18 +299,48 @@ class NotionNetwork:
         if self.development_stage in ("embryo", "synapse_burst"):
             return
 
+        # 终身可塑期大幅降低修剪（稳定网络结构）
+        if self.development_stage == "lifelong":
+            # 只修剪完全无活动的连接
+            for notion in self.notions.values():
+                if not notion.is_alive:
+                    continue
+                for target_id, strength in list(notion.connections.items()):
+                    if notion.connections[target_id] < 0.001:
+                        to_prune.append((notion.id, target_id))
+            # 执行
+            for source_id, target_id in to_prune:
+                if source_id in self.notions and target_id in self.notions[source_id].connections:
+                    del self.notions[source_id].connections[target_id]
+                    self.notions[source_id].out_degree = max(0,
+                        self.notions[source_id].out_degree - 1)
+                    self.stats["total_connections_pruned"] += 1
+            return
+
+        # 修剪期和稳态期/分化期：积极衰减和修剪
+        if self.development_stage in ("pruning", "differentiation"):
+            decay_rate = params["steady_decay_rate"] * 3  # 3倍衰减速率
+            prune_threshold = params["pruning_strength_threshold"]
+        else:
+            decay_rate = params["steady_decay_rate"]
+            prune_threshold = params["pruning_strength_threshold"]
+
         for notion in self.notions.values():
             if not notion.is_alive:
                 continue
             for target_id, strength in list(notion.connections.items()):
-                # 衰减
-                if self.cycle % params["steady_decay_cycles"] == 0:
+                target = self.notions.get(target_id)
+                if target is None:
+                    to_prune.append((notion.id, target_id))
+                    continue
+
+                # 衰减：只有非活跃连接才衰减
+                if not notion.is_active or not target.is_active:
                     notion.connections[target_id] = max(0,
-                        strength - params["steady_decay_rate"])
+                        strength - decay_rate * notion.plasticity)
 
                 # 修剪条件
-                if (notion.connections[target_id] < params["pruning_strength_threshold"]
-                    and self.cycle > params["pruning_inactive_cycles"]):
+                if notion.connections[target_id] < prune_threshold:
                     to_prune.append((notion.id, target_id))
 
         # 执行修剪
@@ -366,6 +402,11 @@ class NotionNetwork:
         if notion.type == NotionType.MEMORY:
             return False  # 记忆节点不分裂
 
+        # 总节点数限制
+        max_nodes = split_config.get("max_total_nodes", 300)
+        if len(self.notions) >= max_nodes:
+            return False
+
         # 胚胎期放宽分裂条件
         if self.development_stage == "embryo":
             # 只要能量超过阈值且未达分裂上限就分裂
@@ -404,30 +445,25 @@ class NotionNetwork:
 
         # 非胚胎期：按规则分化
         if new_type is None:
-            # 分化期/稳态期：强制确保类型多样性
-            if self.development_stage in ("differentiation", "steady"):
+            # 分化期/稳态期/修剪期：强制确保类型多样性
+            if self.development_stage in ("differentiation", "steady", "pruning", "synapse_burst"):
                 type_counts = defaultdict(int)
                 for n in self.notions.values():
                     type_counts[n.type.value] += 1
 
                 # 强制确保oscillator存在（从stem或interneuron转化）
                 if type_counts.get("oscillator", 0) < 5:
-                    if (is_stem or notion.type == NotionType.INTERNEURON) and random.random() < 0.06:
+                    if (is_stem or notion.type == NotionType.INTERNEURON) and random.random() < 0.08:
                         new_type = NotionType.OSCILLATOR
                         period_range = diff_params["oscillator_period_range"]
                         notion.oscillator_period = random.randint(period_range[0], period_range[1])
 
                 # 强制确保projector存在
-                elif type_counts.get("projector", 0) < 3 and notion.out_degree > 5 and random.random() < 0.03:
+                elif type_counts.get("projector", 0) < 3 and notion.out_degree > 5 and random.random() < 0.05:
                     new_type = NotionType.PROJECTOR
 
-                # 确保memory节点
-                elif type_counts.get("memory", 0) < 5 and notion.activation > self.global_mean_activation * 1.5:
-                    new_type = NotionType.MEMORY
-                    notion.plasticity = 0.2
-
                 # 确保sensor
-                elif type_counts.get("sensor", 0) < 5 and is_stem and random.random() < 0.01:
+                elif type_counts.get("sensor", 0) < 5 and is_stem and random.random() < 0.02:
                     new_type = NotionType.SENSOR
 
                 # 确保gate节点
@@ -502,6 +538,13 @@ class NotionNetwork:
         # 胚胎期增加连接概率促进网络形成
         if self.development_stage == "embryo":
             base_prob *= 3  # 胚胎期3倍连接概率
+
+        # 终身可塑期：极低连接概率，只允许少量新连接
+        if self.development_stage == "lifelong":
+            base_prob *= 0.05  # 5%概率
+            # 连接密度超过10%时停止建立新连接
+            if self._connection_density() > 0.10:
+                return
 
         # 随机采样（避免全量O(N²)）
         max_checks = min(5000, len(notion_list) * 10)

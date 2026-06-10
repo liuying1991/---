@@ -1,0 +1,33 @@
+database:
+  path: "data/memory.db"
+
+audio:
+  input_dir: "data/audio_in"
+  processed_dir: "data/audio_processed"
+  supported_formats: [".wav", ".mp3", ".m4a", ".flac"]
+
+whisper:
+  model_size: "base"
+  language: "zh"
+
+discovery:
+  max_concepts_per_pass: 100
+  clustering_eps: 0.5
+  clustering_min_samples: 2
+  run_interval_seconds: 60
+
+attention:
+  novelty_weight: 0.3
+  pattern_weight: 0.3
+  emotion_weight: 0.2
+  association_weight: 0.2
+
+llm:
+  provider: "openai"
+  api_base: "https://api.openai.com/v1"
+  api_key: "${OPENAI_API_KEY}"
+  model: "gpt-4o-mini"
+
+tags:
+  auto_extract: true
+  max_tags_per_node: 200

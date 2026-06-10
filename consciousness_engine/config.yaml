@@ -1,0 +1,52 @@
+# 意识引擎配置
+
+# 物理法则层
+physics:
+  space:
+    dimensions: 3
+    unit: "meter"
+    max_view_distance: 100
+  time:
+    tick_rate: 60  # Hz
+    time_scale: 1.0
+
+# 生物法则层
+bio:
+  perception:
+    visual_range: 50
+    audio_range: 30
+    tactile_range: 2
+  nervous:
+    neuron_count: 1000
+    synapse_plasticity: 0.1
+  emotion:
+    base_arousal: 0.5
+    max_intensity: 1.0
+    decay_rate: 0.01
+
+# 意识法则层
+consciousness:
+  memory:
+    vectors_path: "data/vectors.db"
+    working_memory_limit: 4
+    emotion_multiplier: 2.0
+  attention:
+    novelty_weight: 0.3
+    emotion_weight: 0.3
+    association_weight: 0.4
+  sleep:
+    consolidation_interval: 300  # 5分钟
+    importance_threshold: 0.5
+  forgetting:
+    decay_rate: 0.95
+    max_inactive_seconds: 3600
+
+# 虚拟现实层
+vr:
+  window:
+    width: 1280
+    height: 720
+    title: "Consciousness Engine"
+  rendering:
+    fps: 60
+    vsync: true

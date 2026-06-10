@@ -40,3 +40,44 @@ forgetting:
 learning:
   base_lr: 0.1
   emotion_multiplier: 2.0
+
+# LLM配置
+llm:
+  backend: "openai_compatible"  # openai_compatible / ollama / vllm
+  api_base: "http://localhost:8000/v1"  # vLLM/llama.cpp/Ollama兼容端点
+  api_key: ""  # 如需认证
+  model: "qwen2.5-7b-instruct"  # 模型名称
+  max_tokens: 4096
+  temperature: 0.7
+  top_p: 0.9
+  context_window: 8192  # 上下文窗口大小
+  max_history_messages: 50  # 最大历史消息数
+
+# 技能配置
+skills:
+  sandbox_enabled: true
+  work_dir: "/workspace/nomad_mem_v4/data"  # 技能沙箱工作目录
+  command_blacklist:  # 危险命令黑名单
+    - "rm -rf /"
+    - "mkfs"
+    - "dd if="
+    - ":(){:|:&};:"
+    - "chmod 777 /"
+  command_whitelist: []  # 空=不启用白名单限制
+  confirm_dangerous: true  # 危险操作需确认
+
+# Web服务配置
+web:
+  host: "0.0.0.0"
+  port: 8080
+  cors_origins: ["*"]
+  debug: false
+
+# 对话配置
+dialog:
+  system_prompt: |
+    你是 Jarvis，一个智能AI管家。你拥有持久化记忆，能够学习、遗忘、成长。
+    你可以执行系统命令、读写文件、搜索网络，并通过记忆系统提供个性化的回答。
+    保持简洁、专业、有条理的回答。
+  max_context_tokens: 4000  # 对话上下文最大token数
+  memory_injection_k: 5  # 每次对话注入的相关记忆数量

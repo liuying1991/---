@@ -1,0 +1,86 @@
+# 贾维斯核心配置
+
+# LLM配置
+llm:
+  # 后端类型: vllm, llama_cpp, openai_compatible
+  backend: "llama_cpp"
+  # 模型路径
+  model_path: "./models/llama-3-8b-instruct.Q4_K_M.gguf"
+  # API地址（用于vllm或openai_compatible）
+  api_base: "http://localhost:8000"
+  # 上下文长度
+  context_length: 4096
+  # 温度参数
+  temperature: 0.7
+  # 最大生成token数
+  max_tokens: 2048
+
+# 语音配置
+voice:
+  # 是否启用语音
+  enabled: true
+  # 语音识别服务: whisper_local, whisper_api, vosk
+  stt_backend: "whisper_local"
+  # 语音合成服务: piper, coqui, edge_tts
+  tts_backend: "piper"
+  # Whisper模型路径
+  whisper_model: "./models/whisper-small"
+  # Piper模型路径
+  piper_model: "./models/piper-voices"
+  # 唤醒词
+  wake_word: "贾维斯"
+
+# 系统控制配置
+system:
+  # 是否启用系统控制
+  enabled: true
+  # 允许执行的命令白名单（空为允许所有）
+  command_whitelist: []
+  # 禁止执行的命令黑名单
+  command_blacklist:
+    - "rm -rf /"
+    - "mkfs"
+    - "dd if="
+  # 是否需要确认危险操作
+  confirm_dangerous: true
+  # 工作目录
+  work_dir: "/home/user"
+
+# Web服务配置
+web:
+  # 监听地址
+  host: "0.0.0.0"
+  # 监听端口
+  port: 8080
+  # 是否启用WebSocket
+  websocket: true
+  # 静态文件目录
+  static_dir: "./web/dist"
+
+# 日志配置
+log:
+  # 日志级别: debug, info, warn, error
+  level: "info"
+  # 日志文件路径
+  file: "./logs/jarvis.log"
+  # 是否输出到控制台
+  console: true
+  # 日志文件最大大小(MB)
+  max_size: 100
+  # 保留旧日志文件数量
+  max_backups: 5
+  # 保留天数
+  max_age: 30
+
+# 对话配置
+dialog:
+  # 系统提示词
+  system_prompt: |
+    你是贾维斯(JARVIS)，一个智能AI助手。
+    你可以帮助用户执行系统命令、管理文件、回答问题等。
+    你应该简洁、高效、友好地回应。
+    当需要执行系统操作时，使用工具调用来完成。
+  # 历史消息数量
+  history_length: 20
+  # 是否启用流式输出
+  stream: true

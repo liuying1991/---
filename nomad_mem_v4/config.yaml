@@ -1,0 +1,42 @@
+database:
+  path: "data/memory.db"
+  vectors_path: "data/vectors.db"
+
+audio:
+  input_dir: "data/audio_in"
+  processed_dir: "data/audio_processed"
+  supported_formats: [".wav", ".mp3", ".m4a", ".flac"]
+
+whisper:
+  model_size: "base"
+  language: "zh"
+
+encoder:
+  text_model: "all-MiniLM-L6-v2"
+  embedding_dim: 384
+
+discovery:
+  clustering_interval: 100  # 每N个向量聚类一次
+  clustering_eps: 0.5
+  clustering_min_samples: 2
+
+sleep:
+  consolidation_interval: 21600  # 6小时（秒）
+  importance_threshold: 0.5
+  consolidation_count_max: 3
+
+attention:
+  novelty_weight: 0.3
+  emotion_weight: 0.3
+  association_weight: 0.4
+  working_memory_limit: 4  # 硬性限制
+
+forgetting:
+  decay_rate: 0.95
+  max_inactive_days: 7
+  merge_similarity_threshold: 0.9
+  edge_pruning_threshold: 0.1
+
+learning:
+  base_lr: 0.1
+  emotion_multiplier: 2.0

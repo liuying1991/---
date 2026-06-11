@@ -73,6 +73,32 @@ class JarvisCore:
         # 新增模块（第十一轮）
         self.self_evolution = None
 
+        # 新增模块（第十二轮）
+        self.tool_registry = None
+        self.tool_executor = None
+        self.tool_selector = None
+
+        # 新增模块（第十三轮）
+        self.dialog_flow = None
+        self.presentation_engine = None
+        self.emotion_tracker = None
+
+        # 新增模块（第十四轮）
+        self.autonomous_engine = None
+
+        # 新增模块（第十五轮）
+        self.scene_manager = None
+        self.scene_automation = None
+        self.data_analyzer = None
+
+        # 新增模块（第十六轮）
+        self.experience_replay = None
+        self.experience_summarizer = None
+
+        # 新增模块（第十七轮）
+        self.intent_predictor = None
+        self.proactive_responder = None
+
     def initialize(self):
         """初始化所有模块"""
         import tempfile
@@ -212,6 +238,87 @@ class JarvisCore:
         except ImportError:
             pass
 
+        # 16. 初始化工具系统
+        try:
+            from nomad_mem.skills.tool_registry import ToolRegistry
+            from nomad_mem.skills.tool_executor import ToolExecutor
+            from nomad_mem.autonomy.tool_selector import ToolSelector
+            from nomad_mem.skills.builtin_tools import register_builtin_tools
+
+            self.tool_registry = ToolRegistry()
+            register_builtin_tools(self.tool_registry)
+            self.tool_executor = ToolExecutor()
+            self.tool_selector = ToolSelector(self.tool_registry)
+        except ImportError:
+            pass
+
+        # 17. 初始化对话流/展示/情绪模块
+        try:
+            from nomad_mem.autonomy.dialog_flow import DialogFlowManager
+            from nomad_mem.core.presentation_engine import PresentationEngine
+            from nomad_mem.autonomy.emotion_tracker import EmotionTracker
+
+            self.dialog_flow = DialogFlowManager(
+                db_path=os.path.join(tmpdir, "dialog_flow.db")
+            )
+            self.presentation_engine = PresentationEngine()
+            self.emotion_tracker = EmotionTracker(
+                db_path=os.path.join(tmpdir, "emotion_tracker.db")
+            )
+        except ImportError:
+            pass
+
+        # 18. 初始化自主运行系统
+        try:
+            from nomad_mem.autonomy.autonomous_engine import AutonomousEngine
+            self.autonomous_engine = AutonomousEngine(
+                data_dir=os.path.join(tmpdir, "autonomous")
+            )
+        except ImportError:
+            pass
+
+        # 19. 初始化场景系统+场景自动化+数据分析
+        try:
+            from nomad_mem.autonomy.scene_manager import SceneManager
+            from nomad_mem.automation.scene_automation import SceneAutomation
+            from nomad_mem.core.data_analyzer import DataAnalyzer
+
+            self.scene_manager = SceneManager(
+                db_path=os.path.join(tmpdir, "scenes.db")
+            )
+            self.scene_automation = SceneAutomation(
+                scene_manager=self.scene_manager
+            )
+            self.data_analyzer = DataAnalyzer()
+        except ImportError:
+            pass
+
+        # 20. 初始化经验回放+摘要
+        try:
+            from nomad_mem.autonomy.experience_replay import ExperienceReplay
+            from nomad_mem.core.experience_summarizer import ExperienceSummarizer
+
+            self.experience_replay = ExperienceReplay(
+                db_path=os.path.join(tmpdir, "experiences.db")
+            )
+            self.experience_summarizer = ExperienceSummarizer(
+                experience_replay=self.experience_replay
+            )
+        except ImportError:
+            pass
+
+        # 21. 初始化意图预测+主动响应
+        try:
+            from nomad_mem.autonomy.intent_predictor import IntentPredictor
+            from nomad_mem.core.proactive_responder import ProactiveResponder
+
+            self.intent_predictor = IntentPredictor(
+                db_path=os.path.join(tmpdir, "intent_predictor.db")
+            )
+            self.proactive_responder = ProactiveResponder()
+        except ImportError:
+            pass
+
         self.initialized = True
 
     def chat(self, message: str, user_id: str = "default") -> Dict[str, Any]:
@@ -279,6 +386,45 @@ class JarvisCore:
                     "confidence": intent.confidence,
                     "entities": intent.entities,
                 }
+
+            # 1.5 工具选择（根据意图匹配工具）
+            if self.tool_selector and self.tool_executor:
+                intent_category = intent.category.value if intent and hasattr(intent, 'category') else "chat"
+                tool_matches = self.tool_selector.select_tools(intent_category, message)
+                if tool_matches:
+                    top_tool = tool_matches[0]
+                    if top_tool.score > 0.3:
+                        response["suggested_tool"] = {
+                            "tool_id": top_tool.tool_id,
+                            "score": top_tool.score,
+                            "reason": top_tool.reason,
+                        }
+
+            # 1.6 情绪检测（检测用户情绪并记录）
+            if self.emotion_tracker:
+                detected_emotion = self.emotion_tracker.detect_emotion(message)
+                intensity = 0.5
+                if detected_emotion:
+                    self.emotion_tracker.record_emotion(
+                        user_id=user_id,
+                        emotion=detected_emotion,
+                        intensity=intensity,
+                        trigger=message[:100],
+                    )
+                    response["detected_emotion"] = detected_emotion.value
+
+                    # 获取情感回应策略
+                    strategy = self.emotion_tracker.get_emotional_response_strategy(detected_emotion)
+                    response["emotion_strategy"] = strategy
+
+                    # 获取情绪趋势
+                    trend = self.emotion_tracker.get_emotional_trend(user_id, hours=24)
+                    dominant = trend.dominant_emotion
+                    direction = trend.trend_direction
+                    response["emotional_trend"] = {
+                        "dominant_emotion": dominant.value if hasattr(dominant, 'value') else (dominant or "neutral"),
+                        "trend_direction": direction.value if hasattr(direction, 'value') else (direction or "stable"),
+                    }
 
             # 2. 获取用户画像上下文
             user_context = {}
@@ -368,20 +514,27 @@ class JarvisCore:
                     session_id = self.session_manager.create_session(user_id)
 
                 intent_category = intent.category.value if intent and hasattr(intent, 'category') else "chat"
+                # Convert intent string to DialogAct enum for session_manager
+                try:
+                    from nomad_mem.autonomy.session_manager import DialogAct
+                    dialog_act = DialogAct(intent_category.upper())
+                except (ValueError, ImportError):
+                    dialog_act = DialogAct.INFORM
                 self.session_manager.add_turn(
                     session_id=session_id,
                     user_utterance=message,
-                    dialog_act=intent_category,
+                    dialog_act=dialog_act,
                 )
                 response["session_id"] = session_id
 
             # 13. 行为预测（预测下一步需求）
             if self.behavior_predictor:
                 intent_str = intent.category.value if intent and hasattr(intent, 'category') else "chat"
+                import json as _json
                 self.behavior_predictor.record_behavior(
                     user_id=user_id,
                     action=intent_str,
-                    context={"message_length": len(message)},
+                    context=_json.dumps({"message_length": len(message)}),
                 )
                 predictions = self.behavior_predictor.predict_next_action(
                     user_id=user_id,
@@ -492,7 +645,7 @@ class JarvisCore:
         if self.behavior_predictor:
             status["modules"]["behavior_predictor"] = {
                 "status": "ready",
-                "patterns_count": len(self.behavior_predictor.pattern_memory.get_all_patterns()),
+                "patterns_count": len(self.behavior_predictor.memory.get_patterns("default")),
             }
 
         if self.session_manager:
@@ -501,6 +654,46 @@ class JarvisCore:
         # 第十一轮新增模块状态
         if self.self_evolution:
             status["modules"]["self_evolution"] = self.self_evolution.get_evolution_summary()
+
+        # 第十二轮新增模块状态
+        if self.tool_registry:
+            status["modules"]["tool_system"] = {
+                "registry": self.tool_registry.get_stats(),
+                "executor": self.tool_executor.get_stats() if self.tool_executor else {},
+                "selector": self.tool_selector.get_stats() if self.tool_selector else {},
+            }
+
+        # 第十三轮新增模块状态
+        if self.dialog_flow:
+            status["modules"]["dialog_flow"] = self.dialog_flow.get_stats()
+
+        if self.presentation_engine:
+            status["modules"]["presentation_engine"] = self.presentation_engine.get_stats()
+
+        if self.emotion_tracker:
+            status["modules"]["emotion_tracker"] = self.emotion_tracker.get_stats()
+
+        # 第十四轮新增模块状态
+        if self.autonomous_engine:
+            status["modules"]["autonomous_engine"] = self.autonomous_engine.get_autonomous_status()
+
+        # 第十五轮新增模块状态
+        if self.scene_manager:
+            status["modules"]["scene_manager"] = self.scene_manager.get_stats()
+
+        if self.scene_automation:
+            status["modules"]["scene_automation"] = self.scene_automation.get_stats()
+
+        if self.data_analyzer:
+            status["modules"]["data_analyzer"] = {"status": "ready", "analyses_count": 0}
+
+        # 第十六轮新增模块状态
+        if self.experience_replay:
+            status["modules"]["experience_replay"] = self.experience_replay.get_stats()
+
+        # 第十七轮新增模块状态
+        if self.intent_predictor:
+            status["modules"]["intent_predictor"] = self.intent_predictor.get_stats()
 
         return status
 
@@ -529,6 +722,28 @@ class JarvisCore:
             self.session_manager.close()
         if self.self_evolution:
             self.self_evolution.close()
+        if self.tool_executor:
+            self.tool_executor.close()
+        if self.tool_selector:
+            self.tool_selector.close()
+        if self.dialog_flow:
+            self.dialog_flow.close()
+        if self.presentation_engine:
+            pass  # No resources to close
+        if self.emotion_tracker:
+            self.emotion_tracker.close()
+        if self.autonomous_engine:
+            self.autonomous_engine.close()
+        if self.scene_manager:
+            self.scene_manager.close()
+        if self.scene_automation:
+            self.scene_automation.close()
+        if self.data_analyzer:
+            pass  # DataAnalyzer has no resources to close
+        if self.experience_replay:
+            self.experience_replay.close()
+        if self.intent_predictor:
+            self.intent_predictor.close()
         self.initialized = False
 
     def register_plugin(self, plugin_id: str, name: str, handler: Any,
@@ -638,6 +853,140 @@ class JarvisCore:
             "errors_corrected": report.errors_corrected,
         }
 
+    def use_tool(self, tool_id: str, args: Dict = None, user_id: str = "default") -> Dict:
+        """
+        使用工具
+
+        Args:
+            tool_id: 工具ID
+            args: 工具参数
+            user_id: 用户ID
+
+        Returns:
+            工具执行结果
+        """
+        if not self.tool_registry or not self.tool_executor:
+            return {"error": "Tool system not available"}
+
+        tool = self.tool_registry.get_tool(tool_id)
+        if not tool:
+            return {"error": f"Tool '{tool_id}' not found"}
+
+        if tool.status.value != "available":
+            return {"error": f"Tool '{tool_id}' is not available (status: {tool.status.value})"}
+
+        handler = self.tool_registry.get_tool_handler(tool_id)
+        params = args or {}
+
+        result = self.tool_executor.execute_sync(
+            tool_id=tool_id,
+            handler=handler,
+            args=[],
+            kwargs=params,
+            timeout=30,
+        )
+
+        # Record selection for learning
+        if self.tool_selector:
+            self.tool_selector.record_selection(tool_id, result.success)
+
+        return {
+            "tool_id": tool_id,
+            "success": result.success,
+            "result": result.result_data,
+            "error": result.error,
+            "execution_time": result.execution_time,
+            "status": result.status.value,
+        }
+
+    def list_tools(self, category: str = None) -> List[Dict]:
+        """
+        列出可用工具
+
+        Args:
+            category: 可选，按类别过滤
+
+        Returns:
+            工具列表
+        """
+        if not self.tool_registry:
+            return []
+        tools = self.tool_registry.list_tools(
+            category=None if not category else __import__('nomad_mem.skills.tool_registry', fromlist=['ToolCategory']).ToolCategory(category)
+        )
+        return [
+            {
+                "tool_id": t.tool_id,
+                "name": t.name,
+                "description": t.description,
+                "category": t.category.value,
+                "parameters": [
+                    {"name": p.name, "type": p.param_type, "description": p.description, "required": p.required}
+                    for p in t.parameters
+                ],
+            }
+            for t in tools
+        ]
+
+    def start_dialog_flow(self, flow_type: str, steps: List[Dict] = None,
+                          question: str = "", options: List[str] = None) -> Dict:
+        """
+        启动对话流程
+
+        Args:
+            flow_type: 流程类型 (confirmation/menu/form)
+            steps: 流程步骤
+            question: 问题（用于confirmation/menu）
+            options: 选项（用于menu）
+
+        Returns:
+            流程信息
+        """
+        if not self.dialog_flow:
+            return {"error": "Dialog flow manager not available"}
+
+        if flow_type == "confirmation":
+            flow_id = self.dialog_flow.create_confirmation_flow(question)
+        elif flow_type == "menu":
+            flow_id = self.dialog_flow.create_menu_flow(question, options or [])
+        elif flow_type == "form":
+            flow_id = self.dialog_flow.create_form_flow(steps or [])
+        else:
+            flow_id = self.dialog_flow.start_flow(flow_type, steps or [])
+
+        prompt = self.dialog_flow.get_current_prompt(flow_id)
+        return {"flow_id": flow_id, "prompt": prompt}
+
+    def process_dialog_response(self, flow_id: str, user_response: str) -> Dict:
+        """
+        处理对话流程响应
+
+        Args:
+            flow_id: 流程ID
+            user_response: 用户响应
+
+        Returns:
+            处理结果
+        """
+        if not self.dialog_flow:
+            return {"error": "Dialog flow manager not available"}
+        return self.dialog_flow.process_response(flow_id, user_response)
+
+    def present_data(self, data, presentation_type: str = None) -> str:
+        """
+        展示数据
+
+        Args:
+            data: 数据
+            presentation_type: 展示类型 (table/list/progress/status_panel/card/timeline)
+
+        Returns:
+            格式化后的字符串
+        """
+        if not self.presentation_engine:
+            return str(data)
+        return self.presentation_engine.format_response(data, presentation_type)
+
     def _generate_reply(
         self,
         message: str,
@@ -673,3 +1022,455 @@ class JarvisCore:
         }
 
         return replies.get(category, f"我明白了：{message}")
+
+    def start_autonomous_mode(self) -> bool:
+        """
+        启动自主运行模式
+
+        Returns:
+            是否启动成功
+        """
+        if not self.autonomous_engine:
+            return False
+        self.autonomous_engine.start()
+        return True
+
+    def stop_autonomous_mode(self) -> bool:
+        """
+        停止自主运行模式
+
+        Returns:
+            是否停止成功
+        """
+        if not self.autonomous_engine:
+            return False
+        self.autonomous_engine.stop()
+        return True
+
+    def add_autonomous_task(self, name: str, trigger_type: str,
+                            trigger_config: Dict, action: str) -> str:
+        """
+        添加自主任务
+
+        Args:
+            name: 任务名称
+            trigger_type: 触发类型
+            trigger_config: 触发配置
+            action: 执行动作
+
+        Returns:
+            任务ID
+        """
+        if not self.autonomous_engine:
+            return ""
+        return self.autonomous_engine.add_autonomous_task(
+            name, trigger_type, trigger_config, action
+        )
+
+    def run_autonomous_cycle(self) -> Dict:
+        """
+        执行一次自主循环
+
+        Returns:
+            循环报告
+        """
+        if not self.autonomous_engine:
+            return {"error": "Autonomous engine not available"}
+        return self.autonomous_engine.run_autonomous_cycle()
+
+    def detect_current_scene(self, user_id: str = "default") -> Optional[str]:
+        """
+        检测当前场景
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            场景类型名称
+        """
+        if not self.scene_manager:
+            return None
+        # Get current context from context_awareness if available
+        context = {}
+        if self.context_awareness:
+            ctx = self.context_awareness.get_current_context(user_id)
+            context = {
+                "time_of_day": ctx.time_of_day.value,
+                "day_type": ctx.day_type.value,
+                "activity_state": ctx.activity_state.value,
+            }
+        scene_type = self.scene_manager.detect_current_scene(context)
+        return scene_type.value if scene_type else None
+
+    def activate_scene(self, scene_type: str, user_id: str = "default", reason: str = "") -> bool:
+        """
+        激活场景
+
+        Args:
+            scene_type: 场景类型
+            user_id: 用户ID
+            reason: 激活原因
+
+        Returns:
+            是否激活成功
+        """
+        if not self.scene_manager:
+            return False
+        try:
+            from nomad_mem.autonomy.scene_manager import SceneType
+            st = SceneType(scene_type.lower())
+            self.scene_manager.activate_scene(st, triggered_by=reason or "manual")
+            return True
+        except (ValueError, ImportError):
+            return False
+
+    def create_scene_automation(self, scene_type: str, trigger_type: str,
+                                action_type: str, action_params: Dict = None) -> bool:
+        """
+        创建场景自动化规则
+
+        Args:
+            scene_type: 场景类型
+            trigger_type: 触发类型
+            action_type: 动作类型
+            action_params: 动作参数
+
+        Returns:
+            是否创建成功
+        """
+        if not self.scene_automation:
+            return False
+        try:
+            action_str = action_type
+            if action_params:
+                action_str = f"{action_type}:{action_params.get('style', '')}"
+            rule_id = self.scene_automation.create_automation_rule(
+                name=f"auto_{scene_type}_{action_type}",
+                scene_type=scene_type,
+                trigger_type=trigger_type,
+                trigger_config={},
+                actions=[action_str],
+            )
+            return bool(rule_id)
+        except (ValueError, Exception):
+            return False
+
+    def check_scene_automation(self, user_id: str = "default") -> Optional[str]:
+        """
+        检查并执行场景自动化
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            执行的动作类型，无则None
+        """
+        if not self.scene_automation:
+            return None
+        # Build context from current scene
+        context = {}
+        current = self.scene_manager.get_current_scene() if self.scene_manager else None
+        if current:
+            context["scene_type"] = current.scene_type.value
+        events = self.scene_automation.check_and_execute(context)
+        if events:
+            return events[0].event_type
+        return None
+
+    def analyze_data(self, data_points: List, analysis_types: List[str] = None,
+                     target_variable: str = None) -> Dict:
+        """
+        数据分析
+
+        Args:
+            data_points: 数据点列表
+            analysis_types: 分析类型列表
+            target_variable: 目标变量
+
+        Returns:
+            分析结果
+        """
+        if not self.data_analyzer:
+            return {"error": "Data analyzer not available"}
+        types = analysis_types or ["descriptive"]
+        results = {}
+        for atype in types:
+            try:
+                result = self.data_analyzer.analyze_data(data_points, atype)
+                results[atype] = result.statistics
+            except ValueError:
+                results[atype] = {"error": f"Unknown analysis type: {atype}"}
+        return results
+
+    def generate_report(self, data_points: List, report_type: str = "summary",
+                        target_variable: str = None) -> str:
+        """
+        生成报告
+
+        Args:
+            data_points: 数据点列表
+            report_type: 报告类型 (summary/trend/comparison)
+            target_variable: 目标变量
+
+        Returns:
+            Markdown格式报告
+        """
+        if not self.data_analyzer:
+            return "Data analyzer not available"
+        try:
+            if report_type == "trend":
+                result = self.data_analyzer.generate_trend_report(data_points)
+            elif report_type == "comparison":
+                result = self.data_analyzer.generate_comparison_report(data_points, target_variable or "value")
+            else:
+                result = self.data_analyzer.generate_summary_report(data_points)
+            # Convert AnalysisResult to markdown string if needed
+            if hasattr(result, 'findings'):
+                return self.data_analyzer.format_report_as_markdown(result)
+            return str(result)
+        except Exception:
+            return f"Report generation failed for type: {report_type}"
+
+    def record_experience(self, user_id: str, intent: str, action: str,
+                          result: str, outcome: str = "positive",
+                          lesson: str = "", importance: float = 0.5) -> str:
+        """
+        记录交互经验
+
+        Args:
+            user_id: 用户ID
+            intent: 意图
+            action: 采取的行动
+            result: 结果
+            outcome: 结果类型 (positive/negative/neutral)
+            lesson: 教训
+            importance: 重要程度
+
+        Returns:
+            经验ID
+        """
+        if not self.experience_replay:
+            return ""
+        try:
+            from nomad_mem.autonomy.experience_replay import ExperienceType, ExperienceOutcome
+            exp_type = ExperienceType.SUCCESS if outcome == "positive" else ExperienceType.FAILURE
+            exp_outcome = ExperienceOutcome(outcome)
+            return self.experience_replay.record_experience(
+                user_id=user_id,
+                intent=intent,
+                context="{}",
+                action_taken=action,
+                result=result,
+                exp_type=exp_type,
+                outcome=exp_outcome,
+                lesson_learned=lesson,
+                importance=importance,
+            )
+        except (ValueError, Exception):
+            return ""
+
+    def retrieve_experiences(self, keyword: str, k: int = 5) -> List[Dict]:
+        """
+        检索相关经验
+
+        Args:
+            keyword: 搜索关键词
+            k: 返回数量
+
+        Returns:
+            经验列表
+        """
+        if not self.experience_replay:
+            return []
+        experiences = self.experience_replay.retrieve_similar(keyword, k)
+        return [
+            {
+                "exp_id": e.exp_id,
+                "intent": e.intent,
+                "action": e.action_taken,
+                "result": e.result,
+                "outcome": e.outcome.value,
+                "lesson": e.lesson_learned,
+                "importance": e.importance,
+            }
+            for e in experiences
+        ]
+
+    def get_experience_summary(self, user_id: str = "default") -> Dict:
+        """
+        获取经验摘要
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            经验摘要
+        """
+        if not self.experience_summarizer:
+            return {"error": "Experience summarizer not available"}
+        summary = self.experience_summarizer.generate_user_summary(user_id)
+        return summary.to_dict()
+
+    def get_failure_analysis(self) -> Dict:
+        """
+        获取失败经验分析
+
+        Returns:
+            分析报告
+        """
+        if not self.experience_summarizer:
+            return {"error": "Experience summarizer not available"}
+        return self.experience_summarizer.generate_failure_analysis()
+
+    def get_experience_stats(self, user_id: str = "default") -> Dict:
+        """
+        获取经验统计
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            统计信息
+        """
+        if not self.experience_replay:
+            return {}
+        return self.experience_replay.get_user_stats(user_id)
+
+    def extract_experience_patterns(self) -> List[Dict]:
+        """
+        提取经验模式
+
+        Returns:
+            模式列表
+        """
+        if not self.experience_replay:
+            return []
+        patterns = self.experience_replay.extract_patterns()
+        return [
+            {
+                "pattern_id": p.pattern_id,
+                "type": p.pattern_type,
+                "description": p.description,
+                "frequency": p.frequency,
+                "success_rate": p.success_rate,
+            }
+            for p in patterns
+        ]
+
+    def record_intent_transition(self, user_id: str, from_intent: str,
+                                 to_intent: str, scene: str = "",
+                                 success: bool = True) -> bool:
+        """
+        记录意图转换
+
+        Args:
+            user_id: 用户ID
+            from_intent: 当前意图
+            to_intent: 下一个意图
+            scene: 场景上下文
+            success: 是否成功
+
+        Returns:
+            是否记录成功
+        """
+        if not self.intent_predictor:
+            return False
+        try:
+            self.intent_predictor.record_transition(
+                user_id, from_intent, to_intent, scene, success
+            )
+            return True
+        except Exception:
+            return False
+
+    def predict_next_intent(self, user_id: str, current_intent: str = "",
+                            scene: str = "", k: int = 3) -> List[Dict]:
+        """
+        预测下一个意图
+
+        Args:
+            user_id: 用户ID
+            current_intent: 当前意图
+            scene: 场景上下文
+            k: 返回预测数量
+
+        Returns:
+            预测列表
+        """
+        if not self.intent_predictor:
+            return []
+        predictions = self.intent_predictor.predict_next(
+            user_id, current_intent, scene, k
+        )
+        return [p.to_dict() for p in predictions]
+
+    def get_proactive_response(self, user_id: str, current_intent: str = "",
+                               scene: str = "") -> Dict:
+        """
+        获取主动响应
+
+        Args:
+            user_id: 用户ID
+            current_intent: 当前意图
+            scene: 场景上下文
+
+        Returns:
+            主动响应
+        """
+        if not self.intent_predictor or not self.proactive_responder:
+            return {"should_respond": False}
+        predictions = self.intent_predictor.predict_next(
+            user_id, current_intent, scene, k=1
+        )
+        if not predictions:
+            return {"should_respond": False}
+        response = self.proactive_responder.generate_response(predictions[0])
+        return response.to_dict()
+
+    def set_proactive_level(self, level: str) -> bool:
+        """
+        设置主动程度
+
+        Args:
+            level: minimal/balanced/aggressive
+
+        Returns:
+            是否设置成功
+        """
+        if not self.proactive_responder:
+            return False
+        try:
+            self.proactive_responder.set_proactive_level(level)
+            return True
+        except Exception:
+            return False
+
+    def get_intent_profile(self, user_id: str = "default") -> Dict:
+        """
+        获取用户意图画像
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            意图画像
+        """
+        if not self.intent_predictor:
+            return {}
+        return self.intent_predictor.get_user_intent_profile(user_id)
+
+    def get_intent_flow(self, user_id: str = "default",
+                        from_intent: str = "") -> List[Dict]:
+        """
+        获取意图流转统计
+
+        Args:
+            user_id: 用户ID
+            from_intent: 可选，从指定意图出发
+
+        Returns:
+            流转统计
+        """
+        if not self.intent_predictor:
+            return []
+        return self.intent_predictor.get_intent_flow(user_id, from_intent)

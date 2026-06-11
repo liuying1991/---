@@ -7,6 +7,13 @@ from nomad_mem.autonomy.session_manager import (
     TurnInfo,
     SessionInfo,
 )
+from nomad_mem.autonomy.dialog_flow import (
+    DialogFlowManager,
+    FlowState,
+    FlowType,
+    FlowStep,
+    DialogFlow,
+)
 
 __all__ = [
     "AutonomyDriver",
@@ -16,4 +23,9 @@ __all__ = [
     "DialogAct",
     "TurnInfo",
     "SessionInfo",
+    "DialogFlowManager",
+    "FlowState",
+    "FlowType",
+    "FlowStep",
+    "DialogFlow",
 ]

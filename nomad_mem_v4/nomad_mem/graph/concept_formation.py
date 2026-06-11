@@ -20,6 +20,35 @@ class ConceptFormation:
         self.discovery_config = config.get("discovery", {})
         self.eps = self.discovery_config.get("clustering_eps", 0.5)
         self.min_samples = self.discovery_config.get("clustering_min_samples", 2)
+        self._ensure_tables()
+
+    def _ensure_tables(self):
+        """确保nodes和vector_to_node表存在"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS nodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                content TEXT,
+                node_type TEXT DEFAULT 'concept',
+                centroid_vector_id INTEGER,
+                member_vector_ids TEXT DEFAULT '[]',
+                importance_score REAL DEFAULT 0.5,
+                tags_json TEXT DEFAULT '{}',
+                created_at TIMESTAMP,
+                updated_at TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vector_to_node (
+                vector_id INTEGER,
+                node_id INTEGER,
+                membership_strength REAL DEFAULT 1.0,
+                assigned_at TIMESTAMP,
+                PRIMARY KEY (vector_id, node_id)
+            )
+        """)
+        self.conn.commit()
 
     def run_clustering(self) -> Dict[str, Any]:
         """
@@ -82,9 +111,9 @@ class ConceptFormation:
 
             # 创建节点
             cursor.execute("""
-                INSERT INTO nodes (name, content, node_type, centroid_vector_id, member_vector_ids, created_at, updated_at)
-                VALUES (?, ?, 'concept', ?, ?, ?, ?)
-            """, (node_name, f"概念簇包含{len(vec_ids)}个向量", "concept",
+                INSERT INTO nodes (name, content, node_type, centroid_vector_id, member_vector_ids, importance_score, created_at, updated_at)
+                VALUES (?, ?, 'concept', ?, ?, 0.5, ?, ?)
+            """, (node_name, f"概念簇包含{len(vec_ids)}个向量",
                   centroid_id, json.dumps(vec_ids), datetime.now(), datetime.now()))
             node_id = cursor.lastrowid
 

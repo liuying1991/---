@@ -449,7 +449,9 @@ class ReflectionEngine:
             return None
 
         # 获取失败经验
-        failures = experience_replay.retrieve_by_intent(user_id, "failed", k=20)
+        failures = experience_replay.retrieve_by_intent("failed", k=20)
+        # 按用户过滤
+        failures = [f for f in failures if f.user_id == user_id]
 
         if not failures:
             return None

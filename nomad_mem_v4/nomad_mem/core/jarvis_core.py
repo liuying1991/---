@@ -793,6 +793,13 @@ class JarvisCore:
         if self.goal_planner:
             status["modules"]["goal_planner"] = {"status": "ready"}
 
+        # 第二十一轮新增模块状态
+        if self.autonomous_executor:
+            status["modules"]["autonomous_executor"] = self.autonomous_executor.get_stats()
+
+        if self.reflection_engine:
+            status["modules"]["reflection_engine"] = self.reflection_engine.get_stats()
+
         return status
 
     def close(self):
@@ -853,6 +860,10 @@ class JarvisCore:
         if self.goal_manager:
             self.goal_manager.close()
         # GoalPlanner has no resources to close
+        if self.autonomous_executor:
+            self.autonomous_executor.close()
+        if self.reflection_engine:
+            self.reflection_engine.close()
         self.initialized = False
 
     def register_plugin(self, plugin_id: str, name: str, handler: Any,
@@ -2158,3 +2169,112 @@ class JarvisCore:
         if self.goal_planner:
             stats["planner"] = {"status": "ready"}
         return stats
+
+    # ── Autonomous Execution & Reflection ──────────────────────────────────
+
+    def run_autonomous_cycle(self, user_id: str = "default",
+                             scene: str = "") -> Dict:
+        """
+        执行自主行动循环
+
+        Args:
+            user_id: 用户ID
+            scene: 当前场景
+
+        Returns:
+            循环报告
+        """
+        if not self.autonomous_executor:
+            return {"error": "Autonomous executor not available"}
+        report = self.autonomous_executor.run_cycle(
+            user_id=user_id,
+            scene=scene,
+            goal_manager=self.goal_manager,
+            goal_planner=self.goal_planner,
+            experience_replay=self.experience_replay,
+            safety_engine=self.safety_engine,
+        )
+        return report.to_dict()
+
+    def set_execution_level(self, level: str) -> bool:
+        """
+        设置自主执行级别
+
+        Args:
+            level: observe/suggest/confirm/autonomous
+
+        Returns:
+            是否设置成功
+        """
+        if not self.autonomous_executor:
+            return False
+        return self.autonomous_executor.set_execution_level(level)
+
+    def get_autonomous_stats(self) -> Dict:
+        """获取自主执行统计"""
+        if not self.autonomous_executor:
+            return {}
+        return self.autonomous_executor.get_stats()
+
+    def get_autonomous_history(self, k: int = 10) -> List[Dict]:
+        """获取自主循环历史"""
+        if not self.autonomous_executor:
+            return []
+        return self.autonomous_executor.get_cycle_history(k)
+
+    def evaluate_self(self) -> Dict:
+        """
+        自我评估
+
+        Returns:
+            评估结果和建议
+        """
+        if not self.reflection_engine:
+            return {"error": "Reflection engine not available"}
+
+        evaluations = self.reflection_engine.evaluate_performance(
+            experience_replay=self.experience_replay,
+            goal_manager=self.goal_manager,
+            autonomous_executor=self.autonomous_executor,
+        )
+
+        # 反思
+        reflection = None
+        if self.experience_replay:
+            reflection = self.reflection_engine.reflect_on_failures(
+                self.experience_replay, "default"
+            )
+
+        if not reflection:
+            reflection = self.reflection_engine.reflect_on_strategy(evaluations)
+
+        # 生成建议
+        recs = self.reflection_engine.generate_recommendations(
+            reflection=reflection,
+            evaluations=evaluations,
+        )
+
+        result = {
+            "evaluations": [e.to_dict() for e in evaluations],
+            "reflection": reflection.to_dict() if reflection else None,
+            "recommendations": [r.to_dict() for r in recs],
+        }
+        return result
+
+    def get_pending_recommendations(self) -> List[Dict]:
+        """获取待处理改进建议"""
+        if not self.reflection_engine:
+            return []
+        return self.reflection_engine.get_pending_recommendations()
+
+    def apply_recommendation(self, recommendation_id: str) -> bool:
+        """应用改进建议"""
+        if not self.reflection_engine:
+            return False
+        return self.reflection_engine.apply_recommendation(recommendation_id)
+
+    def get_reflection_history(self, k: int = 10) -> List[Dict]:
+        """获取反思历史"""
+        if not self.reflection_engine:
+            return []
+        return self.reflection_engine.get_reflection_history(k)

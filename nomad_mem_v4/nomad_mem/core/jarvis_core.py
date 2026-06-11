@@ -99,6 +99,18 @@ class JarvisCore:
         self.intent_predictor = None
         self.proactive_responder = None
 
+        # 新增模块（第十八轮）
+        self.safety_engine = None
+        self.safety_monitor = None
+
+        # 新增模块（第十九轮）
+        self.skill_discoverer = None
+        self.skill_evolution = None
+
+        # 新增模块（第二十轮）
+        self.goal_manager = None
+        self.goal_planner = None
+
     def initialize(self):
         """初始化所有模块"""
         import tempfile
@@ -316,6 +328,51 @@ class JarvisCore:
                 db_path=os.path.join(tmpdir, "intent_predictor.db")
             )
             self.proactive_responder = ProactiveResponder()
+        except ImportError:
+            pass
+
+        # 22. 初始化自主安全系统
+        try:
+            from nomad_mem.core.safety_engine import SafetyEngine
+            from nomad_mem.autonomy.safety_monitor import SafetyMonitor
+
+            self.safety_engine = SafetyEngine(
+                db_path=os.path.join(tmpdir, "safety_engine.db")
+            )
+            self.safety_monitor = SafetyMonitor(
+                db_path=os.path.join(tmpdir, "safety_monitor.db")
+            )
+        except ImportError:
+            pass
+
+        # 23. 初始化技能自发现+自进化
+        try:
+            from nomad_mem.skills.skill_discovery import SkillDiscoverer
+            from nomad_mem.skills.skill_evolution import SkillEvolutionManager
+
+            self.skill_discoverer = SkillDiscoverer(
+                db_path=os.path.join(tmpdir, "skill_discovery.db")
+            )
+            self.skill_evolution = SkillEvolutionManager(
+                db_path=os.path.join(tmpdir, "skill_evolution.db")
+            )
+        except ImportError:
+            pass
+
+        # 24. 初始化自主目标管理+目标规划
+        try:
+            from nomad_mem.autonomy.goal_manager import GoalManager
+            from nomad_mem.autonomy.goal_planner import GoalPlanner
+
+            self.goal_manager = GoalManager(
+                db_path=os.path.join(tmpdir, "goal_manager.db")
+            )
+            self.goal_planner = GoalPlanner(
+                goal_manager=self.goal_manager,
+                experience_replay=self.experience_replay,
+                scene_manager=self.scene_manager,
+                skill_evolution=self.skill_evolution,
+            )
         except ImportError:
             pass
 
@@ -695,6 +752,29 @@ class JarvisCore:
         if self.intent_predictor:
             status["modules"]["intent_predictor"] = self.intent_predictor.get_stats()
 
+        # 第十八轮新增模块状态
+        if self.safety_engine:
+            status["modules"]["safety_engine"] = self.safety_engine.get_safety_status()
+
+        if self.safety_monitor:
+            status["modules"]["safety_monitor"] = self.safety_monitor.get_stats()
+
+        # 第十九轮新增模块状态
+        if self.skill_discoverer:
+            status["modules"]["skill_discoverer"] = {
+                "top_skills": self.skill_discoverer.get_top_skills(3),
+            }
+
+        if self.skill_evolution:
+            status["modules"]["skill_evolution"] = self.skill_evolution.get_stats()
+
+        # 第二十轮新增模块状态
+        if self.goal_manager:
+            status["modules"]["goal_manager"] = self.goal_manager.get_stats()
+
+        if self.goal_planner:
+            status["modules"]["goal_planner"] = {"status": "ready"}
+
         return status
 
     def close(self):
@@ -744,6 +824,17 @@ class JarvisCore:
             self.experience_replay.close()
         if self.intent_predictor:
             self.intent_predictor.close()
+        if self.safety_engine:
+            self.safety_engine.close()
+        if self.safety_monitor:
+            self.safety_monitor.close()
+        if self.skill_discoverer:
+            self.skill_discoverer.close()
+        if self.skill_evolution:
+            self.skill_evolution.close()
+        if self.goal_manager:
+            self.goal_manager.close()
+        # GoalPlanner has no resources to close
         self.initialized = False
 
     def register_plugin(self, plugin_id: str, name: str, handler: Any,
@@ -1474,3 +1565,578 @@ class JarvisCore:
         if not self.intent_predictor:
             return []
         return self.intent_predictor.get_intent_flow(user_id, from_intent)
+
+    def assess_safety_risk(self, user_id: str, action: str,
+                           target: str = "") -> Dict:
+        """
+        评估操作安全风险
+
+        Args:
+            user_id: 用户ID
+            action: 操作类型
+            target: 操作目标
+
+        Returns:
+            风险评估结果
+        """
+        if not self.safety_engine:
+            return {}
+        assessment = self.safety_engine.assess_operation(user_id, action, target)
+        return assessment.to_dict()
+
+    def check_safety_anomalies(self, user_id: str) -> List[Dict]:
+        """
+        检查安全异常
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            异常事件列表
+        """
+        if not self.safety_monitor:
+            return []
+        return self.safety_monitor.check_anomalies(user_id)
+
+    def report_user_operation(self, user_id: str, action: str,
+                              risk_score: float = 0.0, target: str = ""):
+        """
+        报告用户操作给监控器
+
+        Args:
+            user_id: 用户ID
+            action: 操作类型
+            risk_score: 风险分数
+            target: 操作目标
+        """
+        if self.safety_monitor:
+            self.safety_monitor.report_operation(user_id, action, risk_score, target)
+
+    def get_user_safety_status(self, user_id: str = "default") -> Dict:
+        """
+        获取用户安全状态
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            安全状态
+        """
+        if not self.safety_monitor:
+            return {}
+        return self.safety_monitor.get_user_status(user_id)
+
+    def get_safety_events(self, user_id: str = "", k: int = 20) -> List[Dict]:
+        """
+        获取安全事件
+
+        Args:
+            user_id: 可选，用户ID
+            k: 返回数量
+
+        Returns:
+            安全事件列表
+        """
+        if not self.safety_monitor:
+            return []
+        return self.safety_monitor.get_events(user_id, k)
+
+    def set_safety_policy(self, policy_name: str) -> bool:
+        """
+        设置安全策略
+
+        Args:
+            policy_name: 策略名称 (default/strict/relaxed)
+
+        Returns:
+            是否设置成功
+        """
+        if not self.safety_engine:
+            return False
+        return self.safety_engine.set_policy(policy_name)
+
+    def update_user_baseline(self, user_id: str):
+        """更新用户行为基线"""
+        if self.safety_engine:
+            self.safety_engine.update_user_baseline(user_id)
+
+    def get_safety_overview(self) -> Dict:
+        """获取安全系统总览"""
+        if not self.safety_engine:
+            return {}
+        return self.safety_engine.get_safety_status()
+
+    # ── Skill Discovery & Evolution ─────────────────────────────────────
+
+    def record_skill_usage(self, skill_name: str, context: str = "",
+                           result: str = "", success: bool = True) -> str:
+        """
+        记录技能使用
+
+        Args:
+            skill_name: 技能名称
+            context: 上下文
+            result: 结果
+            success: 是否成功
+
+        Returns:
+            使用记录ID
+        """
+        if not self.skill_discoverer:
+            return ""
+        return self.skill_discoverer.record_usage(skill_name, context, result, success)
+
+    def find_skill_combinations(self, min_frequency: int = 2) -> List[Dict]:
+        """
+        查找技能组合
+
+        Args:
+            min_frequency: 最小频率
+
+        Returns:
+            技能组合列表
+        """
+        if not self.skill_discoverer:
+            return []
+        combos = self.skill_discoverer.find_combinations(min_frequency)
+        return [
+            {
+                "skills": c.skills,
+                "frequency": c.frequency,
+                "success_rate": c.success_rate,
+            }
+            for c in combos
+        ]
+
+    def suggest_next_skill(self, current_skills: List[str]) -> Optional[str]:
+        """
+        建议下一个技能
+
+        Args:
+            current_skills: 当前技能列表
+
+        Returns:
+            建议的技能名称
+        """
+        if not self.skill_discoverer:
+            return None
+        return self.skill_discoverer.suggest_next_skill(current_skills)
+
+    def get_skill_stats(self, skill_name: str) -> Dict:
+        """
+        获取技能统计
+
+        Args:
+            skill_name: 技能名称
+
+        Returns:
+            统计信息
+        """
+        if not self.skill_discoverer:
+            return {}
+        return self.skill_discoverer.get_skill_stats(skill_name)
+
+    def get_top_skills(self, limit: int = 10) -> List[Dict]:
+        """
+        获取最常用技能
+
+        Args:
+            limit: 返回数量
+
+        Returns:
+            技能列表
+        """
+        if not self.skill_discoverer:
+            return []
+        return self.skill_discoverer.get_top_skills(limit)
+
+    def discover_skill_patterns(self) -> List[Dict]:
+        """
+        发现技能使用模式
+
+        Returns:
+            模式列表
+        """
+        if not self.skill_discoverer:
+            return []
+        return self.skill_discoverer.discover_new_patterns()
+
+    def register_new_skill(self, skill_name: str, description: str = "",
+                           category: str = "general") -> bool:
+        """
+        注册新技能
+
+        Args:
+            skill_name: 技能名称
+            description: 描述
+            category: 分类
+
+        Returns:
+            是否注册成功
+        """
+        if not self.skill_evolution:
+            return False
+        return self.skill_evolution.register_skill(skill_name, description, category)
+
+    def get_skill_performance(self, skill_name: str) -> Dict:
+        """
+        获取技能性能指标
+
+        Args:
+            skill_name: 技能名称
+
+        Returns:
+            性能指标
+        """
+        if not self.skill_evolution:
+            return {}
+        return self.skill_evolution.get_skill_performance(skill_name)
+
+    def record_skill_performance(self, skill_name: str, response_time: float,
+                                 success: bool, rating: float = 0.5):
+        """
+        记录技能性能
+
+        Args:
+            skill_name: 技能名称
+            response_time: 响应时间
+            success: 是否成功
+            rating: 用户评分
+        """
+        if self.skill_evolution:
+            self.skill_evolution.record_skill_result(
+                skill_name, response_time, success, rating
+            )
+
+    def get_optimization_suggestions(self, skill_name: str = "") -> List[Dict]:
+        """
+        获取优化建议
+
+        Args:
+            skill_name: 可选，指定技能
+
+        Returns:
+            建议列表
+        """
+        if not self.skill_evolution:
+            return []
+        suggestions = self.skill_evolution.get_optimization_suggestions(skill_name)
+        return [s.to_dict() for s in suggestions]
+
+    def get_skill_versions(self, skill_name: str) -> List[Dict]:
+        """
+        获取技能版本历史
+
+        Args:
+            skill_name: 技能名称
+
+        Returns:
+            版本列表
+        """
+        if not self.skill_evolution:
+            return []
+        versions = self.skill_evolution.get_versions(skill_name)
+        return [v.to_dict() for v in versions]
+
+    def create_skill_version(self, skill_name: str, version: str,
+                             description: str, evolution_type: str = "performance") -> str:
+        """
+        创建技能新版本
+
+        Args:
+            skill_name: 技能名称
+            version: 版本号
+            description: 描述
+            evolution_type: 进化类型
+
+        Returns:
+            版本ID
+        """
+        if not self.skill_evolution:
+            return ""
+        result = self.skill_evolution.create_version(
+            skill_name, version, description, evolution_type
+        )
+        return result or ""
+
+    def deprecate_skill(self, skill_name: str) -> bool:
+        """
+        废弃技能
+
+        Args:
+            skill_name: 技能名称
+
+        Returns:
+            是否成功
+        """
+        if not self.skill_evolution:
+            return False
+        return self.skill_evolution.deprecate_skill(skill_name)
+
+    def get_deprecation_candidates(self) -> List[Dict]:
+        """
+        获取可能应该废弃的技能
+
+        Returns:
+            候选列表
+        """
+        if not self.skill_evolution:
+            return []
+        return self.skill_evolution.get_deprecation_candidates()
+
+    def get_skill_system_stats(self) -> Dict:
+        """
+        获取技能系统统计
+
+        Returns:
+            统计信息
+        """
+        stats = {}
+        if self.skill_discoverer:
+            stats["discovery"] = {
+                "top_skills": self.skill_discoverer.get_top_skills(5),
+                "patterns": self.skill_discoverer.discover_new_patterns(),
+            }
+        if self.skill_evolution:
+            stats["evolution"] = self.skill_evolution.get_stats()
+        return stats
+
+    # ── Goal Management & Planning ─────────────────────────────────────
+
+    def create_goal(self, user_id: str, title: str, goal_type: str = "task",
+                    priority: str = "medium", deadline: Optional[str] = None,
+                    subgoals: List[str] = None) -> str:
+        """
+        创建目标
+
+        Args:
+            user_id: 用户ID
+            title: 目标标题
+            goal_type: 目标类型
+            priority: 优先级
+            deadline: 截止日期
+            subgoals: 子目标列表
+
+        Returns:
+            目标ID
+        """
+        if not self.goal_manager:
+            return ""
+        goal_id = self.goal_manager.create_goal(
+            user_id=user_id,
+            title=title,
+            goal_type=goal_type,
+            priority=priority,
+            deadline=deadline,
+        )
+        if subgoals and goal_id:
+            self.goal_manager.add_subgoals(goal_id, subgoals)
+        return goal_id
+
+    def add_subgoals(self, goal_id: str, subgoal_titles: List[str]) -> bool:
+        """
+        添加子目标
+
+        Args:
+            goal_id: 目标ID
+            subgoal_titles: 子目标标题列表
+
+        Returns:
+            是否添加成功
+        """
+        if not self.goal_manager:
+            return False
+        return self.goal_manager.add_subgoals(goal_id, subgoal_titles)
+
+    def update_goal_progress(self, goal_id: str, subgoal_id: str,
+                             progress: float = 100.0) -> bool:
+        """
+        更新子目标进度
+
+        Args:
+            goal_id: 目标ID
+            subgoal_id: 子目标ID
+            progress: 进度(0-100)
+
+        Returns:
+            是否更新成功
+        """
+        if not self.goal_manager:
+            return False
+        # Convert 0-100 to 0.0-1.0
+        normalized = progress / 100.0 if progress > 1.0 else progress
+        return self.goal_manager.update_subgoal_progress(
+            goal_id, subgoal_id, normalized
+        )
+
+    def get_goal_progress(self, goal_id: str) -> Dict:
+        """
+        获取目标进度
+
+        Args:
+            goal_id: 目标ID
+
+        Returns:
+            进度详情字典
+        """
+        if not self.goal_manager:
+            return {}
+        return self.goal_manager.get_goal_progress(goal_id)
+
+    def get_user_goals(self, user_id: str, status: str = "") -> List[Dict]:
+        """
+        获取用户目标
+
+        Args:
+            user_id: 用户ID
+            status: 可选，按状态过滤
+
+        Returns:
+            目标列表
+        """
+        if not self.goal_manager:
+            return []
+        goals = self.goal_manager.get_user_goals(user_id)
+        if status:
+            goals = [g for g in goals if g.status.value == status]
+        return [
+            {
+                "goal_id": g.goal_id,
+                "title": g.title,
+                "goal_type": g.goal_type.value,
+                "priority": g.priority.value,
+                "status": g.status.value,
+                "progress": g.progress,
+                "deadline": g.deadline,
+            }
+            for g in goals
+        ]
+
+    def get_active_goals(self, user_id: str = "") -> List[Dict]:
+        """
+        获取活跃目标
+
+        Args:
+            user_id: 可选，用户ID
+
+        Returns:
+            活跃目标列表
+        """
+        if not self.goal_manager:
+            return []
+        goals = self.goal_manager.get_active_goals(user_id)
+        return [
+            {
+                "goal_id": g.goal_id,
+                "title": g.title,
+                "progress": g.progress,
+                "priority": g.priority.value,
+            }
+            for g in goals
+        ]
+
+    def update_goal_status(self, goal_id: str, status: str) -> bool:
+        """
+        更新目标状态
+
+        Args:
+            goal_id: 目标ID
+            status: 新状态
+
+        Returns:
+            是否更新成功
+        """
+        if not self.goal_manager:
+            return False
+        try:
+            from nomad_mem.autonomy.goal_manager import GoalStatus
+            gs = GoalStatus(status.upper())
+            return self.goal_manager.update_goal_status(goal_id, gs)
+        except (ValueError, ImportError):
+            return False
+
+    def update_goal_priority(self, goal_id: str, priority: str) -> bool:
+        """
+        更新目标优先级
+
+        Args:
+            goal_id: 目标ID
+            priority: 新优先级
+
+        Returns:
+            是否更新成功
+        """
+        if not self.goal_manager:
+            return False
+        try:
+            from nomad_mem.autonomy.goal_manager import GoalPriority
+            gp = GoalPriority(priority.upper())
+            return self.goal_manager.update_priority(goal_id, gp)
+        except (ValueError, ImportError):
+            return False
+
+    def suggest_goals(self, user_id: str, scene: str = "", k: int = 3) -> List[Dict]:
+        """
+        获取目标建议
+
+        Args:
+            user_id: 用户ID
+            scene: 当前场景
+            k: 建议数量
+
+        Returns:
+            建议列表
+        """
+        if not self.goal_planner:
+            return []
+        plans = self.goal_planner.suggest_goals(user_id, scene, k)
+        return [p.to_dict() for p in plans]
+
+    def decompose_goal(self, goal_title: str, goal_type: str = "task") -> List[str]:
+        """
+        分解目标为子目标
+
+        Args:
+            goal_title: 目标标题
+            goal_type: 目标类型
+
+        Returns:
+            子目标列表
+        """
+        if not self.goal_planner:
+            return []
+        return self.goal_planner.decompose_goal(goal_title, goal_type)
+
+    def estimate_goal_difficulty(self, goal_title: str, required_skills: List[str] = None) -> float:
+        """
+        预估目标难度
+
+        Args:
+            goal_title: 目标标题
+            required_skills: 所需技能
+
+        Returns:
+            难度(0.0-1.0)
+        """
+        if not self.goal_planner:
+            return 0.0
+        return self.goal_planner.estimate_difficulty(goal_title, required_skills)
+
+    def get_goal_stats(self, user_id: str = "default") -> Dict:
+        """
+        获取目标统计
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            统计信息
+        """
+        stats = {}
+        if self.goal_manager:
+            stats["manager"] = self.goal_manager.get_stats()
+            if user_id:
+                stats["user"] = self.goal_manager.get_user_stats(user_id)
+        if self.goal_planner:
+            stats["planner"] = {"status": "ready"}
+        return stats

@@ -171,13 +171,24 @@ class ExperienceReplay:
 
     def __init__(self, db_path: str = ":memory:"):
         self.db_path = db_path
+        self._persistent_conn = None
+        if db_path == ":memory:":
+            self._persistent_conn = sqlite3.connect(":memory:")
+            self._persistent_conn.row_factory = sqlite3.Row
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:
         """获取数据库连接"""
+        if self._persistent_conn:
+            return self._persistent_conn
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def _maybe_close(self, conn):
+        """Close connection only if not using persistent in-memory DB"""
+        if not self._persistent_conn:
+            conn.close()
 
     def _init_db(self):
         """初始化数据库表"""
@@ -217,7 +228,7 @@ class ExperienceReplay:
             CREATE INDEX IF NOT EXISTS idx_exp_created ON experiences(created_at DESC);
         """)
         conn.commit()
-        conn.close()
+        self._maybe_close(conn)
 
     # ── Experience Recording ──────────────────────────────────────────────
 
@@ -267,7 +278,7 @@ class ExperienceReplay:
              min(max(importance, 0.0), 1.0), now),
         )
         conn.commit()
-        conn.close()
+        self._maybe_close(conn)
         return exp_id
 
     def get_experience(self, exp_id: str) -> Optional[Experience]:
@@ -284,7 +295,7 @@ class ExperienceReplay:
         row = conn.execute(
             "SELECT * FROM experiences WHERE exp_id = ?", (exp_id,)
         ).fetchone()
-        conn.close()
+        self._maybe_close(conn)
         if row is None:
             return None
         return Experience.from_dict(dict(row))
@@ -302,7 +313,7 @@ class ExperienceReplay:
             (exp_id,),
         )
         conn.commit()
-        conn.close()
+        self._maybe_close(conn)
 
     # ── Experience Retrieval ──────────────────────────────────────────────
 
@@ -325,7 +336,7 @@ class ExperienceReplay:
             LIMIT ?""",
             (f"%{keyword}%", f"%{keyword}%", f"%{keyword}%", k),
         ).fetchall()
-        conn.close()
+        self._maybe_close(conn)
         return [Experience.from_dict(dict(r)) for r in rows]
 
     def retrieve_by_intent(self, intent: str, k: int = 5) -> List[Experience]:
@@ -347,7 +358,7 @@ class ExperienceReplay:
             LIMIT ?""",
             (intent, k),
         ).fetchall()
-        conn.close()
+        self._maybe_close(conn)
         return [Experience.from_dict(dict(r)) for r in rows]
 
     def retrieve_by_user(self, user_id: str, k: int = 10) -> List[Experience]:
@@ -369,7 +380,7 @@ class ExperienceReplay:
             LIMIT ?""",
             (user_id, k),
         ).fetchall()
-        conn.close()
+        self._maybe_close(conn)
         return [Experience.from_dict(dict(r)) for r in rows]
 
     def retrieve_recent_failures(self, k: int = 5) -> List[Experience]:
@@ -390,7 +401,7 @@ class ExperienceReplay:
             LIMIT ?""",
             (k,),
         ).fetchall()
-        conn.close()
+        self._maybe_close(conn)
         return [Experience.from_dict(dict(r)) for r in rows]
 
     def retrieve_lessons(self, intent: str = "", k: int = 5) -> List[str]:
@@ -421,7 +432,7 @@ class ExperienceReplay:
                 LIMIT ?""",
                 (k,),
             ).fetchall()
-        conn.close()
+        self._maybe_close(conn)
         return [r["lesson_learned"] for r in rows if r["lesson_learned"]]
 
     # ── Pattern Extraction ────────────────────────────────────────────────
@@ -494,7 +505,7 @@ class ExperienceReplay:
                 lessons="需要改进此场景的处理",
             ))
 
-        conn.close()
+        self._maybe_close(conn)
         return patterns
 
     def save_patterns(self, patterns: List[ExperiencePattern]):
@@ -515,7 +526,7 @@ class ExperienceReplay:
                  p.success_rate, p.related_intents, p.lessons, p.created_at),
             )
         conn.commit()
-        conn.close()
+        self._maybe_close(conn)
 
     def get_patterns(self) -> List[ExperiencePattern]:
         """获取所有已保存的模式"""
@@ -523,7 +534,7 @@ class ExperienceReplay:
         rows = conn.execute(
             "SELECT * FROM patterns ORDER BY frequency DESC"
         ).fetchall()
-        conn.close()
+        self._maybe_close(conn)
         return [ExperiencePattern.from_dict(dict(r)) for r in rows]
 
     # ── Analytics ─────────────────────────────────────────────────────────
@@ -549,7 +560,7 @@ class ExperienceReplay:
                FROM experiences WHERE user_id = ?""",
             (user_id,),
         ).fetchone()
-        conn.close()
+        self._maybe_close(conn)
 
         if row is None or row["total"] == 0:
             return {
@@ -587,7 +598,7 @@ class ExperienceReplay:
                LIMIT ?""",
             (k,),
         ).fetchall()
-        conn.close()
+        self._maybe_close(conn)
         return [(r["intent"], r["cnt"]) for r in rows]
 
     def get_stats(self) -> Dict[str, Any]:
@@ -602,7 +613,7 @@ class ExperienceReplay:
                FROM experiences"""
         ).fetchone()
         pattern_count = conn.execute("SELECT COUNT(*) FROM patterns").fetchone()[0]
-        conn.close()
+        self._maybe_close(conn)
 
         total = row["total"] or 0
         return {
@@ -616,4 +627,6 @@ class ExperienceReplay:
 
     def close(self):
         """关闭数据库连接（清理）"""
-        pass  # SQLite connections are short-lived
+        if self._persistent_conn:
+            self._persistent_conn.close()
+            self._persistent_conn = None

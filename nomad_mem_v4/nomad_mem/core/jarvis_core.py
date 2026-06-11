@@ -111,6 +111,10 @@ class JarvisCore:
         self.goal_manager = None
         self.goal_planner = None
 
+        # 新增模块（第二十一轮）
+        self.autonomous_executor = None
+        self.reflection_engine = None
+
     def initialize(self):
         """初始化所有模块"""
         import tempfile
@@ -372,6 +376,20 @@ class JarvisCore:
                 experience_replay=self.experience_replay,
                 scene_manager=self.scene_manager,
                 skill_evolution=self.skill_evolution,
+            )
+        except ImportError:
+            pass
+
+        # 25. 初始化自主行动执行+反思引擎
+        try:
+            from nomad_mem.autonomy.autonomous_executor import AutonomousExecutor
+            from nomad_mem.core.reflection_engine import ReflectionEngine
+
+            self.autonomous_executor = AutonomousExecutor(
+                db_path=os.path.join(tmpdir, "autonomous_executor.db")
+            )
+            self.reflection_engine = ReflectionEngine(
+                db_path=os.path.join(tmpdir, "reflection_engine.db")
             )
         except ImportError:
             pass

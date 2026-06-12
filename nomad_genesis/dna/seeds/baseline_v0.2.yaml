@@ -1,0 +1,127 @@
+# baseline_v0.2.yaml — Default DNA Seed for Nomad Genesis
+
+meta:
+  version: "0.2"
+  name: "baseline"
+
+initial_config:
+  stem_count: 10
+  vector_dim: 64
+  max_vector_dim: 256
+  connection_radius: 10.0
+  base_metabolism: 1.0
+
+division_rules:
+  energy_threshold: 2.0
+  max_local_density: 0.8
+  max_divisions: 7
+  mutation_sigma: 0.05
+  apoptosis_energy: 0.1
+  apoptosis_isolation: true
+
+differentiation_rules:
+  sensor:
+    input_density_threshold: 0.3
+  interneuron:
+    min_connections: 3
+    activation_freq_ratio: 1.0
+  inhibitor:
+    conversion_prob: 0.20
+  oscillator:
+    idle_cycles: 200
+    energy_multiplier: 3.0
+    period_range: [10, 200]
+  projector:
+    cosine_similarity_threshold: 0.8
+  hub:
+    degree_ratio: 2.0
+  memory:
+    intensity_ratio: 3.0
+  gate:
+    inhibitory_cycles: 100
+
+connection_rules:
+  base_prob: 0.05
+  min_prob: 0.01
+  hebb_increment: 0.1
+  hebb_interval: 10
+  decay_amount: 0.05
+  decay_interval: 100
+  prune_threshold: 0.01
+  prune_inactive_cycles: 500
+  hub_monopoly_threshold: 0.05
+
+development_stages:
+  - name: "embryonic"
+    sim_hours: [0, 2]
+    plasticity: 1.0
+    connection_radius_mult: 1.0
+    pruning: false
+    completion_condition: "node_count >= 500 OR division_rate < 0.1"
+  - name: "migration"
+    sim_hours: [2, 6]
+    plasticity: 0.9
+    connection_radius_mult: 0.7
+    pruning: false
+    completion_condition: "90pct_nodes_at_target_gradient"
+  - name: "synaptogenesis"
+    sim_hours: [6, 12]
+    plasticity: 0.8
+    connection_radius_mult: 0.5
+    pruning: false
+    completion_condition: "connection_density >= 0.30"
+  - name: "pruning"
+    sim_hours: [12, 24]
+    plasticity: 0.5
+    connection_radius_mult: 0.5
+    pruning: true
+    completion_condition: "connection_density <= 0.10 OR sim_hours >= 24"
+  - name: "differentiation"
+    sim_hours: [24, 48]
+    plasticity: 0.3
+    connection_radius_mult: 0.5
+    pruning: true
+    completion_condition: "distinct_type_boundaries_formed"
+  - name: "homeostasis"
+    sim_hours: [48, 72]
+    plasticity: 0.1
+    connection_radius_mult: 0.5
+    pruning: true
+    completion_condition: "sim_hours >= 72"
+  - name: "lifelong_plasticity"
+    sim_hours: [72, null]
+    plasticity: 0.1
+    connection_radius_mult: 0.5
+    pruning: true
+    completion_condition: "never"
+
+action_primitives:
+  primitives:
+    - MOVE_FORWARD
+    - MOVE_BACKWARD
+    - TURN_LEFT
+    - TURN_RIGHT
+    - APPROACH
+    - RETREAT
+    - CONSUME
+    - REST
+    - EMIT_SIGNAL
+    - GROW_SPLIT
+    - CONNECT_ATTEMPT
+    - SELF_MONITOR
+  decode_matrix: null
+
+self_reference:
+  self_sensor_sample_interval: 100
+  gate_self_regulation: true
+  teii_sample_window: 500
+
+intergenerational:
+  experience_encoding:
+    - final_hub_distribution
+    - critical_period_durations
+    - final_connection_density
+    - effective_inhibitor_ratio
+    - oscillator_sync_index
+  seed_modification_weight: 0.3
+  fallback_memory_sampling: true

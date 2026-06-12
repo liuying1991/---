@@ -1,0 +1,20 @@
+# Nomad Genesis — Global Configuration
+
+# Paths
+dna_seed_path: "dna/seeds/baseline_v0.2.yaml"
+log_db_path: "data/runs.db"
+output_dir: "data/"
+
+# Simulation
+sim_hours_total: 72.0
+tick_rate: 1000  # ticks per sim hour
+
+# Logging
+log_interval: 100  # log every N cycles
+export_csv: true
+
+# Search (for search_main.py)
+search:
+  population_size: 200
+  max_workers: 8
+  sim_hours: 72.0

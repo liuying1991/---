@@ -60,10 +60,15 @@ class TransferEntropyCalculator:
         # Step 3: Make matrix non-negative and symmetric-ish
         M = np.abs(M)
         np.fill_diagonal(M, 0)
+        
+        # Normalize matrix to improve eigenvalue distribution
+        # Add small constant to avoid zero rows/columns
+        M = M + 1e-6
+        np.fill_diagonal(M, 0)
 
         # Step 4: Compute eigenvalues
         try:
-            eigenvalues = np.linalg.eigvalsh(M)
+            eigenvalues = np.linalg.eigvals(M)
         except np.linalg.LinAlgError:
             return 0.0
 
@@ -73,7 +78,9 @@ class TransferEntropyCalculator:
         if total < 1e-10:
             return 0.0
 
-        integration = eigenvalues[-1] / total
+        # Use maximum eigenvalue (not last)
+        max_eigenvalue = np.max(eigenvalues)
+        integration = max_eigenvalue / total
         return float(min(1.0, max(0.0, integration)))
 
     def _extract_activations(self, network, window: int) -> np.ndarray:

@@ -39,6 +39,7 @@ class Notion:
     oscillator_period: Optional[int] = None
     oscillator_phase: Optional[int] = None
     born_at_stage: str = ""
+    birth_cycle: int = 0                  # cycle when node was created
     idle_cycles: int = 0              # cycles since last fire
     inhibitory_cycles: int = 0        # consecutive cycles receiving inhibitory signals
     last_activation_cycle: int = -1   # cycle of last activation
@@ -86,7 +87,8 @@ class Notion:
 
     @classmethod
     def create_stem(cls, vector_dim: int, position: np.ndarray,
-                    base_metabolism: float = 1.0, born_at_stage: str = "embryonic") -> "Notion":
+                    base_metabolism: float = 1.0, born_at_stage: str = "embryonic",
+                    birth_cycle: int = 0) -> "Notion":
         """Create a new STEM cell with random vector."""
         return cls(
             id=str(uuid.uuid4())[:8],
@@ -97,6 +99,7 @@ class Notion:
             energy=base_metabolism * 2.0,
             position=position.copy(),
             born_at_stage=born_at_stage,
+            birth_cycle=birth_cycle,
         )
 
     @property

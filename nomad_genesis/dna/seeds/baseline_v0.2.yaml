@@ -21,31 +21,31 @@ division_rules:
 
 differentiation_rules:
   sensor:
-    input_density_threshold: 0.3
+    input_density_threshold: 0.2
   interneuron:
-    min_connections: 3
-    activation_freq_ratio: 1.0
+    min_connections: 2
+    activation_freq_ratio: 0.8
   inhibitor:
-    conversion_prob: 0.20
+    conversion_prob: 0.25
   oscillator:
-    idle_cycles: 200
-    energy_multiplier: 3.0
+    idle_cycles: 150
+    energy_multiplier: 2.5
     period_range: [10, 200]
   projector:
-    cosine_similarity_threshold: 0.8
+    cosine_similarity_threshold: 0.7
   hub:
-    degree_ratio: 2.0
+    degree_ratio: 1.8
   memory:
-    intensity_ratio: 3.0
+    intensity_ratio: 2.5
   gate:
-    inhibitory_cycles: 100
+    inhibitory_cycles: 80
 
 connection_rules:
-  base_prob: 0.05
-  min_prob: 0.01
-  hebb_increment: 0.1
+  base_prob: 0.15
+  min_prob: 0.03
+  hebb_increment: 0.15
   hebb_interval: 10
-  decay_amount: 0.05
+  decay_amount: 0.03
   decay_interval: 100
   prune_threshold: 0.01
   prune_inactive_cycles: 500

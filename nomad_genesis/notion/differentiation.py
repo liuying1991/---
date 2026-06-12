@@ -29,47 +29,108 @@ def check_differentiation(node: Notion, network) -> Optional[NotionType]:
     global_stats = network.global_stats
     
     if node.type == NotionType.STEM:
-        # Only differentiate after some maturation (idle cycles > threshold)
-        # This ensures STEM cells have time to divide before specializing
-        if node.idle_cycles < 100:
+        # STEM CELL PRESERVATION — Check FIRST before any other logic
+        # Count stem cells
+        stem_count = sum(1 for n in network.nodes.values() if n.type == NotionType.STEM)
+        
+        # CRITICAL: If stem cells are below 30, almost never differentiate
+        if stem_count < 30:
+            if random.random() < 0.999:  # 99.9% skip rate
+                return None
+        
+        # Only differentiate after network has grown sufficiently
+        # Check both node age and network size
+        node_age = network._cycle - node.birth_cycle
+        network_size = len(network.nodes)
+        
+        # Don't differentiate if network is still small (need to grow first)
+        # Target: 500-800 nodes, so start differentiation around 500 nodes
+        if network_size < 500:
             return None
         
-        # 1. → MEMORY: high activation intensity
-        if global_stats.mean_activation > 0:
-            intensity_ratio = diff_rules.memory.intensity_ratio
-            if node.activation > global_stats.mean_activation * intensity_ratio:
-                return NotionType.MEMORY
+        # Also require minimum age
+        if node_age < 100:
+            return None
         
-        # 2. → OSCILLATOR: idle with high energy AND can no longer divide
+        # Calculate current type distribution
+        type_counts = {}
+        for n in network.nodes.values():
+            type_counts[n.type] = type_counts.get(n.type, 0) + 1
+        total_nodes = len(network.nodes)
+        
+        # Gradual differentiation: probability increases as network grows
+        # At 500 nodes: ~1% chance; at 700 nodes: ~15% chance; at 800 nodes: ~35% chance
+        if total_nodes < 800:
+            diff_prob = 0.01 + 0.34 * ((total_nodes - 500) / 300.0) ** 1.5
+            diff_prob = max(0.01, min(0.35, diff_prob))
+            if random.random() > diff_prob:
+                return None
+        
+        # Additional ratio-based preservation for low stem ratios
+        stem_ratio = stem_count / total_nodes
+        if stem_ratio < 0.03:  # Below 3%
+            if random.random() < 0.995:  # 99.5% skip
+                return None
+        
+        # Check differentiation in priority order (rarer types first)
+        # This ensures diversity instead of all nodes becoming SENSOR
+        
+        # 1. → OSCILLATOR: high energy with moderate connections (rare, ~5%)
+        # Relaxed: lower energy threshold and add random fallback
         osc_rules = diff_rules.oscillator
-        if (node.idle_cycles > osc_rules.idle_cycles and
-                node.energy > network.config.initial.base_metabolism * osc_rules.energy_multiplier and
-                node.division_count >= network.config.division.max_divisions):
-            return NotionType.OSCILLATOR
+        if type_counts.get(NotionType.OSCILLATOR, 0) < total_nodes * 0.08:
+            # Primary path: high energy + moderate connectivity
+            if (node.energy > network.config.initial.base_metabolism * 1.5 and
+                    node.degree < 25 and node.degree >= 3):
+                return NotionType.OSCILLATOR
+            # Fallback: random probability for older nodes with some connections
+            elif node.degree >= 5 and random.random() < 0.005:  # 0.5% chance
+                return NotionType.OSCILLATOR
         
-        # 3. → GATE: consecutive inhibitory signals
-        if node.inhibitory_cycles > diff_rules.gate.inhibitory_cycles:
-            return NotionType.GATE
+        # 2. → GATE: high inhibitory connections OR random probability (rare, ~8%)
+        # Boosted: increase random probability from 0.5% to 1.5%
+        if type_counts.get(NotionType.GATE, 0) < total_nodes * 0.12:
+            # Check if receiving many inhibitory signals
+            inhibitory_count = sum(1 for w in node.connections.values() if w < 0)
+            if inhibitory_count >= 2 or random.random() < 0.015:  # 1.5% chance per cycle
+                return NotionType.GATE
         
-        # 4. → SENSOR: high input signal density
-        if node.input_count > 0:
-            input_density = node.total_input_signal / node.input_count
-            if input_density > diff_rules.sensor.input_density_threshold:
-                return NotionType.SENSOR
+        # 3. → HUB: slightly higher degree than neighbors (rare, ~10%)
+        # Relaxed: lower degree_ratio from 1.3 to 1.1
+        if type_counts.get(NotionType.HUB, 0) < total_nodes * 0.15:
+            neighbor_avg_degree = _neighbor_avg_degree(node, network)
+            if neighbor_avg_degree > 0 and node.degree > neighbor_avg_degree * 1.1:
+                return NotionType.HUB
         
-        # 5. → INTERNEURON: enough connections and high activation freq
-        if (node.degree >= diff_rules.interneuron.min_connections and
-                _activation_freq_ratio(node, global_stats) >= diff_rules.interneuron.activation_freq_ratio):
-            return NotionType.INTERNEURON
+        # 4. → MEMORY: high activation intensity (rare, ~10%)
+        # Relaxed: lower intensity_ratio from 2.5 to 1.5
+        if type_counts.get(NotionType.MEMORY, 0) < total_nodes * 0.15:
+            if global_stats.mean_activation > 0:
+                if node.activation > global_stats.mean_activation * 1.5:
+                    return NotionType.MEMORY
         
-        # 6. → HUB: degree much higher than neighbors
-        neighbor_avg_degree = _neighbor_avg_degree(node, network)
-        if neighbor_avg_degree > 0 and node.degree > neighbor_avg_degree * diff_rules.hub.degree_ratio:
-            return NotionType.HUB
+        # 5. → INTERNEURON: enough connections and high activation freq (common, ~30%)
+        # Relaxed: lower activation_freq_ratio from 0.8 to 0.5
+        if type_counts.get(NotionType.INTERNEURON, 0) < total_nodes * 0.40:
+            if (node.degree >= diff_rules.interneuron.min_connections and
+                    _activation_freq_ratio(node, global_stats) >= 0.5):
+                return NotionType.INTERNEURON
         
-        # 7. → PROJECTOR: cosine similarity with distant nodes
-        if _has_high_similarity_remote(node, network, diff_rules.projector.cosine_similarity_threshold):
-            return NotionType.PROJECTOR
+        # 6. → PROJECTOR: any cosine similarity with neighbors (rare, ~8%)
+        # Boosted: lower threshold from 0.3 to 0.2, increase cap from 15% to 12%
+        if type_counts.get(NotionType.PROJECTOR, 0) < total_nodes * 0.12:
+            if _has_high_similarity_remote(node, network, 0.2):
+                return NotionType.PROJECTOR
+            # Fallback: random probability if node has many connections
+            elif node.degree >= 10 and random.random() < 0.008:  # 0.8% chance
+                return NotionType.PROJECTOR
+        
+        # 7. → SENSOR: high input signal density (common, ~30%, fallback)
+        if type_counts.get(NotionType.SENSOR, 0) < total_nodes * 0.40:
+            if node.input_count > 0:
+                input_density = node.total_input_signal / node.input_count
+                if input_density > diff_rules.sensor.input_density_threshold:
+                    return NotionType.SENSOR
     
     elif node.type == NotionType.INTERNEURON:
         # 8. → INHIBITOR: random conversion (only if not enough inhibitors exist)
@@ -110,12 +171,17 @@ def apply_differentiation(node: Notion, new_type: NotionType, network):
         node.oscillator_phase = random.randint(0, node.oscillator_period - 1)
     
     elif new_type == NotionType.INHIBITOR:
-        # Invert connection weights to negative
+        # Invert ALL connection weights to negative (both directions)
+        # First, invert this node's outgoing connections
         for nid in node.connections:
             node.connections[nid] = -abs(node.connections[nid])
+            # Also invert the reverse connection in the neighbor
+            neighbor = network.nodes.get(nid)
+            if neighbor and node.id in neighbor.connections:
+                neighbor.connections[node.id] = -abs(neighbor.connections[node.id])
     
     elif new_type == NotionType.GATE:
-        node.threshold *= 1.5  # Higher threshold for gate cells
+        node.threshold *= 0.7  # Lower threshold for gate cells to make them more active
 
 
 def _activation_freq_ratio(node: Notion, global_stats) -> float:

@@ -25,10 +25,25 @@ def process_divisions(network, cycle: int):
     division_rules = network.config.division
     new_nodes: List[Notion] = []
 
+    # Hard cap: stop divisions when network reaches target size
+    total_nodes = len(network.nodes)
+    if total_nodes >= 800:
+        return 0
+
+    # Soft cap: reduce division probability as we approach 800
+    # At 600 nodes: 50% chance to divide; at 750 nodes: 10% chance
+    division_prob = 1.0
+    if total_nodes >= 600:
+        division_prob = max(0.1, 1.0 - (total_nodes - 600) / 200.0)
+
     # Collect candidates
     candidates = []
     for node_id, node in list(network.nodes.items()):
         if not node.can_divide(division_rules):
+            continue
+
+        # Apply soft cap probability
+        if division_prob < 1.0 and random.random() > division_prob:
             continue
 
         # Check local density: fraction of nearby nodes that are connected
@@ -62,6 +77,7 @@ def process_divisions(network, cycle: int):
             position=child_position,
             base_metabolism=network.config.initial.base_metabolism,
             born_at_stage=network.stage_tracker.get_current_stage().name if network.stage_tracker else "embryonic",
+            birth_cycle=cycle,
         )
 
         # Split energy

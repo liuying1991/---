@@ -12,9 +12,14 @@ def hebbian_update(
     hebb_increment: float,
     max_strength: float = 1.0,
 ) -> float:
-    """Hebbian rule: co-activation strengthens connection."""
+    """Hebbian rule: co-activation strengthens connection (preserves sign)."""
     if src_fired and dst_fired:
-        return min(conn_strength + hebb_increment, max_strength)
+        # For excitatory connections: strengthen (more positive)
+        # For inhibitory connections: strengthen (more negative)
+        if conn_strength > 0:
+            return min(conn_strength + hebb_increment, max_strength)
+        else:
+            return max(conn_strength - hebb_increment, -max_strength)
     return conn_strength
 
 
@@ -26,7 +31,12 @@ def decay_update(
 ) -> float:
     """Decay: connections weaken if not co-activated."""
     if inactive_cycles > 0 and inactive_cycles % decay_interval == 0:
-        return max(conn_strength - decay_amount, 0.0)
+        # For excitatory connections: weaken toward 0
+        # For inhibitory connections: weaken toward 0 (become less negative)
+        if conn_strength > 0:
+            return max(conn_strength - decay_amount, 0.0)
+        else:
+            return min(conn_strength + decay_amount, 0.0)
     return conn_strength
 
 

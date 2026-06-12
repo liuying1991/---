@@ -72,12 +72,13 @@ def establish_connections(network, stage_config):
             prob = min(prob, 0.5)
 
             if random.random() < prob:
-                strength = 0.1
+                # Increased initial connection strength for better signal propagation
+                strength = 0.25  # Was 0.1, increased to improve network activity
                 # Inhibitor connections start negative
                 if node_b.type == NotionType.INHIBITOR:
-                    strength = -0.1
+                    strength = -0.25
                 elif node_a.type == NotionType.INHIBITOR:
-                    strength = -0.1
+                    strength = -0.25
 
                 node_a.connections[neighbor_id] = strength
                 node_b.connections[node_a.id] = strength

@@ -173,14 +173,20 @@ class NotionNetwork:
 
         # Internal noise: all nodes receive small random signals to maintain baseline activity
         for nd in self.nodes.values():
-            noise = random.gauss(0, 0.15)
-            nd.receive_signal(abs(noise) * (1.0 if nd.type == NotionType.STEM else 0.5))
+            noise = random.gauss(0, 0.3)
+            nd.receive_signal(abs(noise) * 0.8)
         
         # Spontaneous firing for STEM cells (embryonic spontaneous activity)
         for nd in self.get_nodes_by_type(NotionType.STEM):
             if nd.energy > self.config.initial.base_metabolism * 0.5:
-                if random.random() < 0.02:  # 2% chance per cycle
-                    nd.receive_signal(1.0)  # Strong enough to fire
+                if random.random() < 0.05:  # 5% chance per cycle
+                    nd.receive_signal(1.5)  # Strong enough to fire
+        
+        # Spontaneous activity for all nodes (baseline neural activity)
+        for nd in self.nodes.values():
+            if nd.energy > self.config.initial.base_metabolism * 0.3:
+                if random.random() < 0.03:  # 3% chance per cycle
+                    nd.receive_signal(1.2)  # Strong enough to fire
 
         # Self-sensor sampling
         self_sensors = self.get_nodes_by_type(NotionType.GATE)  # GATE acts as self-sensor
@@ -247,7 +253,11 @@ class NotionNetwork:
                 dst = self.nodes.get(dst_id)
                 if dst is None:
                     continue
-                dst.receive_signal(weight * src.activation)
+                # Amplify signal propagation for better network activity
+                signal_strength = weight * src.activation
+                if weight > 0:  # Excitatory connections
+                    signal_strength *= 1.5  # Boost excitatory signals
+                dst.receive_signal(signal_strength)
 
         # Reset potential for all nodes after propagation
         for nd in self.nodes.values():
@@ -322,7 +332,7 @@ class NotionNetwork:
         base_meta = self.config.initial.base_metabolism
 
         for i in range(stem_count):
-            # Random position in a small cluster
-            pos = np.random.randn(3) * 5.0
-            stem = Notion.create_stem(vector_dim, pos, base_meta, "embryonic")
+            # Random position in a larger cluster to reduce initial density
+            pos = np.random.randn(3) * 30.0
+            stem = Notion.create_stem(vector_dim, pos, base_meta, "embryonic", birth_cycle=0)
             self.add_node(stem)

@@ -376,6 +376,7 @@ class JarvisCore:
                 experience_replay=self.experience_replay,
                 scene_manager=self.scene_manager,
                 skill_evolution=self.skill_evolution,
+                skill_discoverer=self.skill_discoverer,
             )
         except ImportError:
             pass

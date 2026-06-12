@@ -73,11 +73,13 @@ class GoalPlanner:
         experience_replay=None,
         scene_manager=None,
         skill_evolution=None,
+        skill_discoverer=None,
     ):
         self.goal_manager = goal_manager
         self.replay = experience_replay
         self.scene_manager = scene_manager
         self.skill_evolution = skill_evolution
+        self.skill_discoverer = skill_discoverer
 
         # 场景到目标类型的映射
         self._scene_goal_templates = {
@@ -254,11 +256,11 @@ class GoalPlanner:
     def _generate_skill_goals(self) -> List[GoalPlan]:
         """基于技能生成目标"""
         plans = []
-        if not self.skill_evolution:
+        if not self.skill_discoverer:
             return plans
 
         # 从高频技能组合生成目标
-        combos = self.skill_evolution.find_combinations(min_frequency=2)
+        combos = self.skill_discoverer.find_combinations(min_frequency=2)
         for combo in combos[:2]:
             plans.append(GoalPlan(
                 goal_title=f"使用技能组合: {', '.join(combo.skills[:2])}",
